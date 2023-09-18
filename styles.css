@@ -1,0 +1,64 @@
+body, h1, form {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-image: url("1.jpeg");
+    background-size: cover ;
+    background-repeat: no-repeat;
+}
+
+h1 {
+    text-align: center;
+    margin-top: 20px;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+}
+
+form {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    font-weight: bold;
+    display: block;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.error {
+    color: red;
+    font-size: 12px;
+}
+
+.success {
+    color: green;
+}
+
+#ageMessage {
+    color: red;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Form</title>
+    <link rel="stylesheet" href="styles.css"> 
+</head>
+<body>
+    <h1>Registration Form</h1>
+    <form id="registrationForm" action="#" method="post">
+        <div class="form-group">
+            <label for="fullName">Full Name:</label>
+            <input type="text" id="fullName" name="fullName" required>
+            <span class="error" id="fullNameError"></span>
+        </div>
+        <div class="form-group">
+            <label for="email">Email Address:</label>
+            <input type="email" id="email" name="email" required>
+            <span class="error" id="emailError"></span>
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            <span class="error" id="passwordError"></span>
+        </div>
+        <div class="form-group">
+            <label for="confirmPassword">Confirm Password:</label>
+            <input type="password" id="confirmPassword" name="confirmPassword" required>
+            <span class="error" id="confirmPasswordError"></span>
+        </div>
+        <div class="form-group">
+            <label for="dob">Date of Birth (YYYY-MM-DD):</label>
+            <input type="text" id="dob" name="dob" required>
+            <span class="error" id="dobError"></span>
+        </div>
+        <div class="form-group">
+            <p id="ageMessage"></p>
+        </div>
+        <div class="form-group">
+            <button type="submit" id="submitButton" disabled>Submit</button>
+        </div>
+    </form>
+    <script src="form.js"></script> 
+</body>
+</html>
