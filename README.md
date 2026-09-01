@@ -57,7 +57,7 @@ Note `backend/.gitignore` excludes `assets/*.pdf`, so your resume stays out of g
 ```bash
 cd backend
 npm install
-cp .env.example .env      # set EMAIL_USERNAME + a Google App Password
+# create .env with EMAIL_USERNAME + a Google App Password (see table below)
 npm start                 # http://localhost:3000
 ```
 
