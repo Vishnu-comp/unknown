@@ -1,12 +1,52 @@
 // Shared helpers for building personalized emails.
 
-/** Replace [user name] / [company name] / [job description] / [job id] placeholders. */
+const FIELDS = {
+  'user name': 'name',
+  'company name': 'companyName',
+  'job description': 'jobDescription',
+  'job id': 'jobId',
+};
+
+const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
+
+/**
+ * Replace [user name] / [company name] / [job description] / [job id] placeholders.
+ *
+ * Also supports optional sections:
+ *
+ *   [if job id] (Job ID: [job id])[/if job id]
+ *
+ * The whole block is dropped when the field is missing/empty in the CSV, so an
+ * absent job id leaves no "(Job ID: )" stub behind. Any leftover [job id] that
+ * was not wrapped is removed together with common surrounding punctuation.
+ */
 export function fillTemplate(template = '', data = {}) {
-  return String(template)
-    .replace(/\[user name\]/gi, data.name || '')
-    .replace(/\[company name\]/gi, data.companyName || '')
-    .replace(/\[job description\]/gi, data.jobDescription || '')
-    .replace(/\[job id\]/gi, data.jobId || '');
+  let out = String(template);
+
+  // 1. Conditional blocks: [if field]...[/if field]
+  for (const [label, key] of Object.entries(FIELDS)) {
+    const block = new RegExp(`\\[if ${label}\\]([\\s\\S]*?)\\[\\/if ${label}\\]`, 'gi');
+    out = out.replace(block, (_m, inner) => (isBlank(data[key]) ? '' : inner));
+  }
+
+  // 2. Drop empty placeholders along with wrapping "(...)" / " - ..." decoration,
+  //    e.g. " (Job ID: [job id])" -> "" instead of " (Job ID: )".
+  for (const [label, key] of Object.entries(FIELDS)) {
+    if (!isBlank(data[key])) continue;
+    const ph = `\\[${label}\\]`;
+    out = out
+      .replace(new RegExp(`\\s*\\([^()]*${ph}[^()]*\\)`, 'gi'), '')
+      .replace(new RegExp(`\\s*<span[^>]*>[^<]*${ph}[^<]*<\\/span>`, 'gi'), '')
+      .replace(new RegExp(`\\s*[-–—|,]\\s*[^<>\\n]*${ph}`, 'gi'), '')
+      .replace(new RegExp(ph, 'gi'), '');
+  }
+
+  // 3. Normal substitution for everything that is present.
+  for (const [label, key] of Object.entries(FIELDS)) {
+    out = out.replace(new RegExp(`\\[${label}\\]`, 'gi'), () => String(data[key] ?? ''));
+  }
+
+  return out;
 }
 
 /** Smart quotes / ellipsis break some mail clients — normalize to ASCII. */

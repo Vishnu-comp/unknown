@@ -5,16 +5,16 @@
 // the text that actually gets sent.
 
 export const DEFAULT_SUBJECT =
-  '[job description] Opportunity at [company name]';
+  '[job description] Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]';
 
 export const DEFAULT_FOLLOWUP_SUBJECT =
-  'Following Up: [job description] Opportunity at [company name]';
+  'Following Up: [job description] Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]';
 
 export const DEFAULT_TEMPLATE = `<p>Hi [user name],</p>
 
 <p>I understand your time is valuable, so I'll keep this brief.</p>
 
-<p>I'm reaching out to express my interest in the <b>[job description]</b> role at <b>[company name]</b> (Job ID: [job id]).</p>
+<p>I'm reaching out to express my interest in the <b>[job description]</b> role at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id].</p>
 
 <p>I'm <b>Vishnu Nair</b>, currently working as a Full Stack Developer at <b><a href="https://www.shoffr.in/" target="_blank" rel="noreferrer">Shoffr</a></b>.</p>
 
@@ -44,7 +44,7 @@ export const DEFAULT_TEMPLATE = `<p>Hi [user name],</p>
 
 export const DEFAULT_FOLLOWUP_TEMPLATE = `<p>Hi [user name],</p>
 
-<p>I wanted to follow up on my previous email about the <b>[job description]</b> opportunity at <b>[company name]</b> (Job ID: [job id]). I'm still very interested in the role and would appreciate any updates or next steps.</p>
+<p>I wanted to follow up on my previous email about the <b>[job description]</b> opportunity at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id]. I'm still very interested in the role and would appreciate any updates or next steps.</p>
 
 <p>Looking forward to your response.</p>
 

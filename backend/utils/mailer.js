@@ -18,6 +18,11 @@ export function getTransporter() {
       },
       pool: true,
       maxConnections: 1,
+      // Only for self-hosted/dev SMTP with a self-signed certificate.
+      // Leave unset for Gmail.
+      ...(process.env.SMTP_REJECT_UNAUTHORIZED === 'false'
+        ? { tls: { rejectUnauthorized: false } }
+        : {}),
     });
   }
   return transporter;

@@ -193,6 +193,10 @@ const CSVEmailSender = () => {
         Placeholders: <code>[user name]</code>, <code>[company name]</code>,{' '}
         <code>[job description]</code>, <code>[job id]</code>.
       </p>
+      <p className="hint">
+        <code>jobId</code> is optional — wrap the bits that depend on it in{' '}
+        <code>[if job id]...[/if job id]</code> and they are dropped entirely for rows without one.
+      </p>
 
       <div className="card">
         <label htmlFor="csv">CSV file</label>

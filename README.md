@@ -22,6 +22,34 @@ frontend/   React (Vite) UI
 Placeholders substituted per candidate: `[user name]`, `[company name]`,
 `[job description]`, `[job id]`.
 
+### Optional placeholders
+
+Wrap anything that should vanish when a CSV column is empty:
+
+```
+Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]
+```
+
+With a job id  -> `Opportunity at KukuFM (Job ID: KF-42)`
+Without one    -> `Opportunity at KukuFM`
+
+Bare `[job id]` outside an `[if ...]` block is also cleaned up along with its
+surrounding `(...)`, so you never get a dangling `(Job ID: )`.
+
+### Resume attachment
+
+Drop your PDF at `backend/assets/resume.pdf` and it is attached to every initial
+email. Any single `*.pdf` in `backend/assets/` is picked up too, or point
+`ATTACHMENT_PATH` at a specific file. Check it is being found:
+
+```bash
+curl localhost:3000/api/attachment
+# {"attached":true,"fileName":"resume.pdf","lookedIn":".../backend/assets"}
+```
+
+The file is resolved per send, so you can add it without restarting the server.
+Note `backend/.gitignore` excludes `assets/*.pdf`, so your resume stays out of git.
+
 ## Running it
 
 ### Backend
@@ -63,7 +91,8 @@ See `backend/sample-candidates.csv`.
 | `EMAIL_PASSWORD` | – | Google **App Password** |
 | `PORT` / `HOST` | `3000` / `0.0.0.0` | API bind |
 | `SEND_DELAY_MS` | `15000` | Pause between mails in a batch |
-| `ATTACHMENT_PATH` | `backend/assets/resume.pdf` | Optional PDF attached to initial mails (skipped if missing) |
+| `ATTACHMENT_PATH` | auto-detected in `backend/assets/` | PDF attached to initial mails (skipped if missing) |
+| `SMTP_REJECT_UNAUTHORIZED` | `true` | Set `false` only for self-signed dev SMTP |
 | `MESSAGE_STORE_PATH` | `./messageStore.json` | Follow-up state file |
 
 ## Notes on the rewrite

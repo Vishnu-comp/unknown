@@ -19,17 +19,61 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Delay between mails in a single batch (Gmail rate-limit friendly).
 const SEND_DELAY_MS = Number(process.env.SEND_DELAY_MS || 15000);
 
-// Optional resume attachment — silently skipped when the file is absent.
-const ATTACHMENT_PATH = process.env.ATTACHMENT_PATH
-  ? path.resolve(process.env.ATTACHMENT_PATH)
-  : path.join(__dirname, '..', 'assets', 'resume.pdf');
+const ASSETS_DIR = path.join(__dirname, '..', 'assets');
+
+/**
+ * Resolve the resume to attach.
+ *
+ * Priority:
+ *   1. ATTACHMENT_PATH env var (explicit override)
+ *   2. assets/resume.pdf
+ *   3. any single *.pdf dropped into assets/ (so "just put your resume there" works)
+ *
+ * Resolved on every send, not at boot, so adding the file does not require a restart.
+ */
+export function resolveAttachmentPath() {
+  if (process.env.ATTACHMENT_PATH) {
+    const p = path.resolve(process.env.ATTACHMENT_PATH);
+    return fs.existsSync(p) ? p : null;
+  }
+
+  const preferred = path.join(ASSETS_DIR, 'resume.pdf');
+  if (fs.existsSync(preferred)) return preferred;
+
+  try {
+    const pdfs = fs
+      .readdirSync(ASSETS_DIR)
+      .filter((f) => f.toLowerCase().endsWith('.pdf'))
+      .sort();
+    if (pdfs.length) return path.join(ASSETS_DIR, pdfs[0]);
+  } catch {
+    /* assets dir missing */
+  }
+  return null;
+}
+
+let warnedNoAttachment = false;
 
 function buildAttachments() {
-  if (!fs.existsSync(ATTACHMENT_PATH)) return [];
+  const file = resolveAttachmentPath();
+
+  if (!file) {
+    if (!warnedNoAttachment) {
+      warnedNoAttachment = true;
+      console.warn(
+        `No resume found - emails will be sent WITHOUT an attachment.\n` +
+          `   Place a PDF at ${path.join(ASSETS_DIR, 'resume.pdf')} or set ATTACHMENT_PATH.`
+      );
+    }
+    return [];
+  }
+
+  warnedNoAttachment = false;
+  console.log(`Attaching ${path.basename(file)}`);
   return [
     {
-      filename: path.basename(ATTACHMENT_PATH),
-      path: ATTACHMENT_PATH,
+      filename: path.basename(file),
+      path: file,
       contentType: 'application/pdf',
     },
   ];
@@ -124,6 +168,18 @@ router.post('/sendCustomEmails', async (req, res, next) => {
   } catch (err) {
     return next(err);
   }
+});
+
+/** GET /api/attachment — quick check that the resume is actually being picked up. */
+router.get('/attachment', (req, res) => {
+  const file = resolveAttachmentPath();
+  res.json({
+    attached: Boolean(file),
+    fileName: file ? path.basename(file) : null,
+    lookedIn: process.env.ATTACHMENT_PATH
+      ? path.resolve(process.env.ATTACHMENT_PATH)
+      : ASSETS_DIR,
+  });
 });
 
 /** GET /api/followups — candidates awaiting a follow-up. */
