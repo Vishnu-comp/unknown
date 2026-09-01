@@ -5,6 +5,7 @@ import path from 'path';
 
 import uploadRoutes from './routes/uploadCSV.js';
 import emailRoutes from './routes/sendEmails.js';
+import galleryRoutes from './routes/gallery.js';
 import { UPLOAD_DIR } from './routes/uploadCSV.js';
 
 dotenv.config();
@@ -25,6 +26,8 @@ app.use('/api/uploads/csv', express.static(UPLOAD_DIR));
 app.use('/api', uploadRoutes);
 // sendCustomEmails + followups + sendFollowUpEmails
 app.use('/api', emailRoutes);
+// Review-only theme gallery
+app.use('/api', galleryRoutes);
 
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.originalUrl}` }));
 
