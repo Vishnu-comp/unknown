@@ -77,6 +77,11 @@ card to enlarge it; expand *Override template for this row* to give one person
 different copy. Previews re-render automatically when you switch theme or edit the
 shared subject/body (debounced).
 
+Each card also has a **theme dropdown** — give one recipient Terminal and another
+Editorial while the rest inherit the batch theme. Overridden rows show a purple
+badge, and the header counts how many are custom. An unknown per-row theme falls
+back to the batch default rather than failing.
+
 `POST /api/preview/batch` powers this — it renders an array of candidates in one
 call and never opens an SMTP connection.
 

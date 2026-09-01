@@ -274,6 +274,9 @@ const CSVEmailSender = () => {
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
+  const overrideCount = csvData.filter((r) => r.theme).length;
+
+  const clearRowThemes = () => setCsvData((rows) => rows.map(({ theme: _t, ...r }) => r));
 
   return (
     <div className="page">
@@ -427,6 +430,7 @@ const CSVEmailSender = () => {
         {csvData.length > 0 && (
           <span className="hint">
             {batchLoading ? 'Rendering...' : `Theme: ${theme}`}
+            {overrideCount > 0 && ` · ${overrideCount} custom`}
             {batchAttachment && ` · ${batchAttachment}`}
           </span>
         )}
@@ -436,8 +440,17 @@ const CSVEmailSender = () => {
 
       {csvData.length > 0 && (
         <p className="hint">
-          Each card is the real rendered email for that row. Click a card to enlarge, or edit
-          its template below the preview to override the shared copy.
+          Each card is the real rendered email for that row. Click a card to enlarge. Use the
+          dropdown on a card to give that one recipient a different theme, or edit its template
+          below the preview to override the shared copy.
+          {overrideCount > 0 && (
+            <>
+              {' '}
+              <button className="linkish" onClick={clearRowThemes}>
+                Reset all {overrideCount} theme override{overrideCount > 1 ? 's' : ''}
+              </button>
+            </>
+          )}
         </p>
       )}
 
@@ -452,11 +465,36 @@ const CSVEmailSender = () => {
                 <div className="pcard-to">
                   <b>{row.name}</b> &lt;{row.email}&gt;
                   {row.cc && <span className="hint"> · CC: {row.cc}</span>}
+                  {p?.themeOverridden && <span className="badge-override">{p.theme}</span>}
                 </div>
                 <div className="pcard-sub">{p?.subject || row.emailSubject || subject}</div>
                 <div className="pcard-meta">
                   {row.companyName} · {row.jobDescription}
                   {row.jobId && <span className="tag"> · ID: {row.jobId}</span>}
+                </div>
+
+                <div className="pcard-theme">
+                  <select
+                    value={row.theme || ''}
+                    onChange={(e) => updateRow(i, 'theme', e.target.value)}
+                    title="Theme for this recipient only"
+                  >
+                    <option value="">Use batch theme ({theme})</option>
+                    {themeList.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.label || t.key}
+                      </option>
+                    ))}
+                  </select>
+                  {row.theme && (
+                    <button
+                      className="ghost small reset"
+                      onClick={() => updateRow(i, 'theme', '')}
+                      title="Revert to the batch theme"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
 

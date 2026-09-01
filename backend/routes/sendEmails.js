@@ -296,18 +296,23 @@ router.post('/preview/batch', (req, res, next) => {
         };
       }
 
+      // Per-row theme wins over the batch default, mirroring how sending works.
+      const rowTheme = THEMES.includes(candidate?.theme) ? candidate.theme : chosen;
+
       try {
         const composed = composeEmail({
           subject: rawSubject,
           template: rawHtml,
           candidate,
-          theme: candidate?.theme || chosen,
+          theme: rowTheme,
         });
         return {
           index,
           email: candidate?.email,
           name: candidate?.name,
           cc: normalizeCc(candidate?.cc) || null,
+          theme: rowTheme,
+          themeOverridden: rowTheme !== chosen,
           ...composed,
         };
       } catch (err) {
