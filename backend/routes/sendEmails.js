@@ -11,7 +11,11 @@ import {
   htmlToText,
   normalizeCc,
   sleep,
+  extractHighlights,
+  buildPreheader,
 } from '../utils/template.js';
+import { renderEmail, THEMES, DEFAULT_THEME } from '../utils/themes.js';
+import { getBranding } from '../utils/branding.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +56,44 @@ export function resolveAttachmentPath() {
   return null;
 }
 
+/**
+ * Personalize a subject/body pair and wrap it in the chosen theme.
+ * Placeholder substitution runs first, so [if job id] blocks behave the same
+ * regardless of theme.
+ */
+export function composeEmail({ subject, template, candidate, theme }) {
+  const name = THEMES.includes(theme) ? theme : DEFAULT_THEME;
+
+  const finalSubject = normalizeQuotes(fillTemplate(subject, candidate));
+  const personalized = normalizeQuotes(fillTemplate(template, candidate));
+
+  if (name === 'plain') {
+    return {
+      subject: finalSubject,
+      html: renderEmail('plain', {
+        bodyHtml: personalized,
+        preheaderText: buildPreheader(personalized),
+      }),
+      text: htmlToText(personalized),
+    };
+  }
+
+  const { body, highlights } = extractHighlights(personalized);
+  const brand = getBranding();
+
+  return {
+    subject: finalSubject,
+    html: renderEmail('branded', {
+      bodyHtml: body,
+      highlights,
+      // Snippet comes from the visible intro, not the lifted bullet list.
+      preheaderText: buildPreheader(body),
+      ...brand,
+    }),
+    text: htmlToText(personalized),
+  };
+}
+
 let warnedNoAttachment = false;
 
 function buildAttachments() {
@@ -88,7 +130,7 @@ function buildAttachments() {
  * Sends sequentially, stores each Message-ID for later follow-ups.
  */
 router.post('/sendCustomEmails', async (req, res, next) => {
-  const { candidates, emailSubject, emailTemplate } = req.body || {};
+  const { candidates, emailSubject, emailTemplate, theme } = req.body || {};
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return res.status(400).json({ message: 'No candidates provided' });
@@ -116,8 +158,12 @@ router.post('/sendCustomEmails', async (req, res, next) => {
           throw new Error('No subject/template provided for this candidate');
         }
 
-        const subject = normalizeQuotes(fillTemplate(rawSubject, candidate));
-        const html = normalizeQuotes(fillTemplate(rawHtml, candidate));
+        const { subject, html, text } = composeEmail({
+          subject: rawSubject,
+          template: rawHtml,
+          candidate,
+          theme: candidate.theme || theme,
+        });
         const cc = normalizeCc(candidate.cc);
 
         const info = await transporter.sendMail({
@@ -126,7 +172,7 @@ router.post('/sendCustomEmails', async (req, res, next) => {
           cc,
           subject,
           html,
-          text: htmlToText(html),
+          text,
           attachments: buildAttachments(),
         });
 
@@ -170,6 +216,41 @@ router.post('/sendCustomEmails', async (req, res, next) => {
   }
 });
 
+/** GET /api/themes — available themes. */
+router.get('/themes', (req, res) => {
+  res.json({ themes: THEMES, default: DEFAULT_THEME });
+});
+
+/**
+ * POST /api/preview — render exactly what would be sent, without sending.
+ * Returns rendered HTML so the UI can show it in an iframe.
+ * Also serves as a dry run: no SMTP connection is opened.
+ */
+router.post('/preview', (req, res, next) => {
+  try {
+    const { candidate = {}, emailSubject, emailTemplate, theme } = req.body || {};
+    if (!emailTemplate) {
+      return res.status(400).json({ message: 'emailTemplate is required' });
+    }
+
+    const composed = composeEmail({
+      subject: emailSubject || '',
+      template: emailTemplate,
+      candidate,
+      theme: theme || DEFAULT_THEME,
+    });
+
+    const file = resolveAttachmentPath();
+    res.json({
+      ...composed,
+      theme: THEMES.includes(theme) ? theme : DEFAULT_THEME,
+      attachment: file ? path.basename(file) : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /api/attachment — quick check that the resume is actually being picked up. */
 router.get('/attachment', (req, res) => {
   const file = resolveAttachmentPath();
@@ -197,7 +278,7 @@ router.get('/followups', async (req, res, next) => {
  * Successful follow-ups are removed from the store so nobody is chased twice.
  */
 router.post('/sendFollowUpEmails', async (req, res, next) => {
-  const { candidates, emailSubject, emailTemplate } = req.body || {};
+  const { candidates, emailSubject, emailTemplate, theme } = req.body || {};
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return res.status(400).json({ message: 'Candidates array is required' });
@@ -239,8 +320,12 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
         // Threading works best when the subject matches the original.
         const baseSubject =
           stored.subject || candidate.emailSubject || emailSubject || 'Following up';
-        const subject = normalizeQuotes(fillTemplate(baseSubject, merged));
-        const html = normalizeQuotes(fillTemplate(rawHtml, merged));
+        const { subject, html, text } = composeEmail({
+          subject: baseSubject,
+          template: rawHtml,
+          candidate: merged,
+          theme: candidate.theme || theme,
+        });
 
         await transporter.sendMail({
           from: process.env.EMAIL_USERNAME,
@@ -248,7 +333,7 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
           cc: normalizeCc(candidate.cc || stored.cc),
           subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
           html,
-          text: htmlToText(html),
+          text,
           inReplyTo: stored.messageId,
           references: [stored.messageId],
         });

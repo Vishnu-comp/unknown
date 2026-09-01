@@ -74,3 +74,31 @@ export function normalizeCc(cc) {
 }
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Pull `<li>` items out of the body so the branded theme can lift them into the
+ * accent panel. Returns the remaining body plus the extracted items.
+ * The plain theme ignores this and keeps the list inline.
+ */
+export function extractHighlights(html = '') {
+  const listMatch = String(html).match(/<ul[^>]*>([\s\S]*?)<\/ul>/i);
+  if (!listMatch) return { body: html, highlights: [] };
+
+  const items = [...listMatch[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map((m) =>
+    m[1].trim()
+  );
+  if (!items.length) return { body: html, highlights: [] };
+
+  // Drop the list and any "Some of the things I've worked on:" lead-in.
+  const body = String(html)
+    .replace(listMatch[0], '')
+    .replace(/<p>\s*Some of the things[^<]*<\/p>\s*/i, '');
+
+  return { body, highlights: items };
+}
+
+/** First ~120 chars of visible text — used as the inbox preview snippet. */
+export function buildPreheader(html = '') {
+  const text = htmlToText(html).replace(/\s+/g, ' ').trim();
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+}

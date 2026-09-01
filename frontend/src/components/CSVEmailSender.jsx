@@ -27,6 +27,10 @@ const CSVEmailSender = () => {
   const [followUpSubject, setFollowUpSubject] = useState(DEFAULT_FOLLOWUP_SUBJECT);
   const [followUpTemplate, setFollowUpTemplate] = useState(DEFAULT_FOLLOWUP_TEMPLATE);
 
+  const [theme, setTheme] = useState('plain');
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
 
@@ -107,6 +111,7 @@ const CSVEmailSender = () => {
           // Shared subject/template edited above are used unless the row overrides them.
           emailSubject: subject,
           emailTemplate: template,
+          theme,
         });
         failures += res.data.failCount || 0;
 
@@ -157,6 +162,7 @@ const CSVEmailSender = () => {
           candidates: [candidate],
           emailSubject: followUpSubject,
           emailTemplate: followUpTemplate,
+          theme,
         });
         failures += res.data.failCount || 0;
 
@@ -175,6 +181,34 @@ const CSVEmailSender = () => {
       setProgress((p) => ({ ...p, status: 'Follow-up failed.' }));
     } finally {
       setSending(false);
+    }
+  };
+
+  // ─── Dry run: render without sending ──────────────────────────────────────
+  const showPreview = async (candidate) => {
+    setError('');
+    setPreviewing(true);
+    try {
+      const sample =
+        candidate ||
+        csvData[0] || {
+          name: 'Vishnu',
+          companyName: 'KukuFM',
+          jobDescription: 'Backend / Frontend Engineer',
+        };
+
+      const { data } = await api.post('/preview', {
+        candidate: sample,
+        emailSubject: sample.emailSubject || subject,
+        emailTemplate: sample.emailTemplate || template,
+        theme,
+      });
+      setPreview({ ...data, to: sample.email || '(sample)' });
+    } catch (err) {
+      console.error('Preview failed:', err);
+      setError(err.response?.data?.message || 'Preview failed.');
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -251,6 +285,66 @@ const CSVEmailSender = () => {
         />
       </div>
 
+      <div className="card">
+        <h2>Theme</h2>
+        <div className="themes">
+          <label className={`theme-opt ${theme === 'plain' ? 'sel' : ''}`}>
+            <input
+              type="radio"
+              name="theme"
+              value="plain"
+              checked={theme === 'plain'}
+              onChange={() => setTheme('plain')}
+            />
+            <b>Plain</b>
+            <span>
+              Reads like a personal email. Best deliverability — lands in Gmail
+              &ldquo;Primary&rdquo;. Recommended for cold outreach.
+            </span>
+          </label>
+          <label className={`theme-opt ${theme === 'branded' ? 'sel' : ''}`}>
+            <input
+              type="radio"
+              name="theme"
+              value="branded"
+              checked={theme === 'branded'}
+              onChange={() => setTheme('branded')}
+            />
+            <b>Branded</b>
+            <span>
+              Wordmark header, gold accent, highlights panel, dark footer. Looks polished but
+              may be filtered to &ldquo;Promotions&rdquo;.
+            </span>
+          </label>
+        </div>
+        <div className="row">
+          <button onClick={() => showPreview()} disabled={previewing}>
+            {previewing ? 'Rendering...' : 'Preview (dry run)'}
+          </button>
+          {preview && (
+            <button className="ghost" onClick={() => setPreview(null)}>
+              Close preview
+            </button>
+          )}
+        </div>
+      </div>
+
+      {preview && (
+        <div className="card">
+          <h2>Preview — {preview.theme}</h2>
+          <p className="hint">
+            To: {preview.to} &nbsp;·&nbsp; Subject: <b>{preview.subject}</b>
+            {preview.attachment && <> &nbsp;·&nbsp; Attachment: {preview.attachment}</>}
+          </p>
+          <iframe
+            title="Email preview"
+            srcDoc={preview.html}
+            className="preview-frame"
+            sandbox=""
+          />
+        </div>
+      )}
+
       <div className="row">
         <button className="secondary" onClick={sendEmails} disabled={sending || !csvData.length}>
           {sending ? 'Sending...' : `Send Emails (${csvData.length})`}
@@ -287,6 +381,9 @@ const CSVEmailSender = () => {
             {row.jobId && <span className="tag">(ID: {row.jobId})</span>}
           </p>
           <p className="subject">Subject: {row.emailSubject || subject}</p>
+          <button className="ghost small" onClick={() => showPreview(row)} disabled={previewing}>
+            Preview this
+          </button>
           <textarea
             rows={4}
             value={row.emailTemplate || ''}

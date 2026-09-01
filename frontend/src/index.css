@@ -59,3 +59,33 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .candidate .subject { font-size: 12px; color: #6b7280; margin: 0 0 6px; }
 .tag { color: #2563eb; font-weight: 600; }
 .error { color: #b91c1c; font-size: 13px; }
+
+/* ── Theme picker ─────────────────────────────────────────────── */
+.themes { display: flex; gap: 12px; flex-wrap: wrap; }
+.theme-opt {
+  flex: 1 1 260px;
+  display: block;
+  font-weight: 400;
+  margin: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: #fff;
+}
+.theme-opt.sel { border-color: #2563eb; box-shadow: 0 0 0 2px #dbeafe; }
+.theme-opt input { margin-right: 8px; }
+.theme-opt b { font-size: 14px; }
+.theme-opt span { display: block; font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.5; }
+
+/* ── Preview ──────────────────────────────────────────────────── */
+.preview-frame {
+  width: 100%;
+  height: 620px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+button.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+button.ghost:disabled { background: #f3f4f6; color: #9ca3af; }
+button.small { padding: 5px 10px; font-size: 12px; margin-bottom: 6px; }

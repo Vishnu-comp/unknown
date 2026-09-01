@@ -36,6 +36,38 @@ Without one    -> `Opportunity at KukuFM`
 Bare `[job id]` outside an `[if ...]` block is also cleaned up along with its
 surrounding `(...)`, so you never get a dangling `(Job ID: )`.
 
+### Themes
+
+Two render modes, chosen per send with the `theme` field (UI has a radio picker):
+
+| Theme | Look | Use for |
+| --- | --- | --- |
+| `plain` (default) | Near-raw HTML in a 600px column | **Cold outreach.** Reads person-to-person and lands in Gmail *Primary*. |
+| `branded` | Wordmark header, gold accent rule, highlights panel, CTA button, dark footer | Warm contacts, post-interview follow-ups, design-conscious companies. |
+
+The branded theme is typographic only — **no logo image is required**, so nothing
+breaks when a client blocks remote images. In branded mode any `<ul>` in your
+template is lifted out and rendered in the accent panel automatically.
+
+Built for real mail clients: table layout, fully inline styles, no `<style>`
+block, no JS, no web fonts, 600px cap, VML fallback for Outlook buttons, and a
+hidden preheader for the inbox snippet.
+
+Customize the sender identity with `BRAND_WORDMARK`, `BRAND_TAGLINE`,
+`BRAND_ACCENT`, `BRAND_CTA_TEXT`, `BRAND_CTA_URL`.
+
+### Preview / dry run
+
+`POST /api/preview` renders exactly what would be sent **without opening an SMTP
+connection**. The UI shows it in a sandboxed iframe — hit *Preview (dry run)* for
+a sample, or *Preview this* on any parsed row.
+
+```bash
+curl -X POST localhost:3000/api/preview -H 'content-type: application/json' \
+  -d '{"candidate":{"name":"Vishnu","companyName":"KukuFM","jobDescription":"Backend Engineer"},
+       "emailTemplate":"<p>Hi [user name]</p>","theme":"branded"}'
+```
+
 ### Resume attachment
 
 Drop your PDF at `backend/assets/resume.pdf` and it is attached to every initial
@@ -93,6 +125,10 @@ See `backend/sample-candidates.csv`.
 | `SEND_DELAY_MS` | `15000` | Pause between mails in a batch |
 | `ATTACHMENT_PATH` | auto-detected in `backend/assets/` | PDF attached to initial mails (skipped if missing) |
 | `SMTP_REJECT_UNAUTHORIZED` | `true` | Set `false` only for self-signed dev SMTP |
+| `BRAND_WORDMARK` | `Vishnu Nair` | Header wordmark (branded theme) |
+| `BRAND_TAGLINE` | `Full Stack Developer` | Small caps line under the wordmark |
+| `BRAND_ACCENT` | `#B8944D` | Accent colour |
+| `BRAND_CTA_TEXT` / `BRAND_CTA_URL` | Portfolio link | Button in branded theme |
 | `MESSAGE_STORE_PATH` | `./messageStore.json` | Follow-up state file |
 
 ## Notes on the rewrite
