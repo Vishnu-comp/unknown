@@ -28,6 +28,7 @@ const CSVEmailSender = () => {
   const [followUpTemplate, setFollowUpTemplate] = useState(DEFAULT_FOLLOWUP_TEMPLATE);
 
   const [theme, setTheme] = useState('plain');
+  const [themeList, setThemeList] = useState([]);
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
 
@@ -53,6 +54,13 @@ const CSVEmailSender = () => {
   useEffect(() => {
     fetchFollowUps();
   }, [fetchFollowUps]);
+
+  useEffect(() => {
+    api
+      .get('/themes')
+      .then(({ data }) => setThemeList(data.themes || []))
+      .catch((err) => console.error('Failed to load themes:', err));
+  }, []);
 
   // ─── Upload & parse CSV ───────────────────────────────────────────────────
   const handleUpload = async () => {
@@ -337,35 +345,27 @@ const CSVEmailSender = () => {
       <div className="card">
         <h2>Theme</h2>
         <div className="themes">
-          <label className={`theme-opt ${theme === 'plain' ? 'sel' : ''}`}>
-            <input
-              type="radio"
-              name="theme"
-              value="plain"
-              checked={theme === 'plain'}
-              onChange={() => setTheme('plain')}
-            />
-            <b>Plain</b>
-            <span>
-              Reads like a personal email. Best deliverability — lands in Gmail
-              &ldquo;Primary&rdquo;. Recommended for cold outreach.
-            </span>
-          </label>
-          <label className={`theme-opt ${theme === 'branded' ? 'sel' : ''}`}>
-            <input
-              type="radio"
-              name="theme"
-              value="branded"
-              checked={theme === 'branded'}
-              onChange={() => setTheme('branded')}
-            />
-            <b>Branded</b>
-            <span>
-              Wordmark header, gold accent, highlights panel, dark footer. Looks polished but
-              may be filtered to &ldquo;Promotions&rdquo;.
-            </span>
-          </label>
+          {themeList.map((t) => (
+            <label key={t.key} className={`theme-opt ${theme === t.key ? 'sel' : ''}`}>
+              <span className="theme-top">
+                <input
+                  type="radio"
+                  name="theme"
+                  value={t.key}
+                  checked={theme === t.key}
+                  onChange={() => setTheme(t.key)}
+                />
+                <b>{t.label}</b>
+                <em className={`risk risk-${t.risk}`}>{t.risk}</em>
+              </span>
+              <span>{t.blurb}</span>
+            </label>
+          ))}
         </div>
+        <p className="hint">
+          <b>Risk</b> = chance Gmail files it under Promotions instead of Primary. For cold
+          outreach, lower is better.
+        </p>
         <div className="row">
           <button onClick={() => showPreview()} disabled={previewing}>
             {previewing ? 'Rendering...' : 'Preview (dry run)'}

@@ -13,7 +13,51 @@
  *              wordmark (no image), dark footer. No logo file required.
  */
 
-export const THEMES = ['plain', 'branded'];
+import { CANDIDATES } from './themeCandidates.js';
+
+/**
+ * Theme registry. `risk` = chance Gmail files it under Promotions instead of
+ * Primary; for cold outreach lower is better.
+ */
+export const THEME_META = {
+  plain: {
+    label: 'Plain',
+    blurb: 'Near-raw HTML in a 600px column. Reads person-to-person.',
+    risk: 'low',
+  },
+  minimal: {
+    label: 'Minimal Rule',
+    blurb: 'Accent hairline over a name block. Safest visual upgrade.',
+    risk: 'low',
+  },
+  sidebar: {
+    label: 'Sidebar Accent',
+    blurb: 'Full-height colour bar on the left. Designed, not shouty.',
+    risk: 'low',
+  },
+  resume: {
+    label: 'Resume Card',
+    blurb: 'Two-column header with a "Selected Work" table. Formal, CV-like.',
+    risk: 'medium',
+  },
+  editorial: {
+    label: 'Editorial',
+    blurb: 'Serif, airy, numbered highlights. Warm — good for longer notes.',
+    risk: 'medium',
+  },
+  branded: {
+    label: 'Branded',
+    blurb: 'Wordmark header, gold accent panel, CTA button, dark footer.',
+    risk: 'medium',
+  },
+  terminal: {
+    label: 'Terminal',
+    blurb: 'Dark card, mono type, shell prompt. Great for eng teams.',
+    risk: 'high',
+  },
+};
+
+export const THEMES = Object.keys(THEME_META);
 export const DEFAULT_THEME = 'plain';
 
 const PALETTE = {
@@ -219,7 +263,10 @@ ${ctaBlock}
 export function renderEmail(theme, options = {}) {
   const name = THEMES.includes(theme) ? theme : DEFAULT_THEME;
   if (name === 'plain') return renderPlain(options);
-  return renderBranded(options);
+  if (name === 'branded') return renderBranded(options);
+
+  // minimal / sidebar / resume / editorial / terminal
+  return CANDIDATES[name].render(options);
 }
 
 export { PALETTE };

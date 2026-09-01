@@ -3,8 +3,7 @@
  * Renders real, sendable HTML so what you see is what would actually go out.
  */
 import express from 'express';
-import { CANDIDATES, renderCandidate } from '../utils/themeCandidates.js';
-import { renderEmail } from '../utils/themes.js';
+import { renderEmail, THEMES, THEME_META } from '../utils/themes.js';
 import { getBranding } from '../utils/branding.js';
 import { fillTemplate, extractHighlights, buildPreheader } from '../utils/template.js';
 
@@ -53,32 +52,29 @@ router.get('/gallery/frame/:key', (req, res) => {
   const { key } = req.params;
   const opts = buildOpts();
 
+  if (!THEMES.includes(key)) {
+    return res.status(404).type('html').send(`<p>Unknown theme: ${key}</p>`);
+  }
+
   try {
-    let html;
-    if (key === 'plain' || key === 'branded') {
-      const brand = getBranding();
-      html = renderEmail(key, {
-        bodyHtml: key === 'plain' ? fillTemplate(SAMPLE_BODY, SAMPLE_CANDIDATE) : opts.bodyHtml,
-        highlights: opts.highlights,
-        preheaderText: opts.preheaderText,
-        ...brand,
-      });
-    } else {
-      html = renderCandidate(key, opts);
-    }
+    const brand = getBranding();
+    const html = renderEmail(key, {
+      ...opts,
+      ...brand,
+      bodyHtml: key === 'plain' ? fillTemplate(SAMPLE_BODY, SAMPLE_CANDIDATE) : opts.bodyHtml,
+      name: brand.wordmark,
+      tagline: brand.tagline,
+      accent: brand.accentColor,
+    });
     res.type('html').send(html);
   } catch (err) {
-    res.status(404).type('html').send(`<p>${err.message}</p>`);
+    res.status(500).type('html').send(`<p>${err.message}</p>`);
   }
 });
 
 /** The gallery itself. */
 router.get('/gallery', (req, res) => {
-  const existing = [
-    { key: 'plain', label: 'Plain (current default)', blurb: 'Near-raw HTML. Best deliverability.', risk: 'low' },
-    { key: 'branded', label: 'Branded (built earlier)', blurb: 'Wordmark header, gold panel, dark footer.', risk: 'medium' },
-  ];
-  const candidates = Object.entries(CANDIDATES).map(([key, c]) => ({ key, ...c }));
+  const all = THEMES.map((key) => ({ key, ...THEME_META[key] }));
 
   const riskColor = { low: '#16a34a', medium: '#d97706', high: '#dc2626' };
 
@@ -111,14 +107,8 @@ router.get('/gallery', (req, res) => {
     For cold outreach, lower is better.
   </p>
 
-  <h2 style="font-size:15px;margin:26px 0 12px;color:#374151;">Already in the repo</h2>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;">
-    ${existing.map(card).join('')}
-  </div>
-
-  <h2 style="font-size:15px;margin:34px 0 12px;color:#374151;">New candidates</h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;">
-    ${candidates.map(card).join('')}
+    ${all.map(card).join('')}
   </div>
 </div>
 </body></html>`);

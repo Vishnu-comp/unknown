@@ -14,7 +14,7 @@ import {
   extractHighlights,
   buildPreheader,
 } from '../utils/template.js';
-import { renderEmail, THEMES, DEFAULT_THEME } from '../utils/themes.js';
+import { renderEmail, THEMES, DEFAULT_THEME, THEME_META } from '../utils/themes.js';
 import { getBranding } from '../utils/branding.js';
 
 const router = express.Router();
@@ -78,17 +78,27 @@ export function composeEmail({ subject, template, candidate, theme }) {
     };
   }
 
+  // Every non-plain theme lifts <ul> items into its own highlight treatment.
   const { body, highlights } = extractHighlights(personalized);
   const brand = getBranding();
 
   return {
     subject: finalSubject,
-    html: renderEmail('branded', {
+    html: renderEmail(name, {
       bodyHtml: body,
       highlights,
       // Snippet comes from the visible intro, not the lifted bullet list.
       preheaderText: buildPreheader(body),
+      // `branded` option names...
       ...brand,
+      // ...plus the shorter names the other themes expect.
+      name: brand.wordmark,
+      tagline: brand.tagline,
+      accent: brand.accentColor,
+      contactLines: brand.contactLines || [
+        process.env.BRAND_PHONE || '+91-9967418222',
+        process.env.EMAIL_USERNAME || 'vishnunair2323@gmail.com',
+      ],
     }),
     text: htmlToText(personalized),
   };
@@ -216,9 +226,12 @@ router.post('/sendCustomEmails', async (req, res, next) => {
   }
 });
 
-/** GET /api/themes — available themes. */
+/** GET /api/themes — available themes with labels and deliverability risk. */
 router.get('/themes', (req, res) => {
-  res.json({ themes: THEMES, default: DEFAULT_THEME });
+  res.json({
+    themes: THEMES.map((key) => ({ key, ...THEME_META[key] })),
+    default: DEFAULT_THEME,
+  });
 });
 
 /**

@@ -38,16 +38,29 @@ surrounding `(...)`, so you never get a dangling `(Job ID: )`.
 
 ### Themes
 
-Two render modes, chosen per send with the `theme` field (UI has a radio picker):
+Seven render modes, chosen per send with the `theme` field (the UI has a picker
+and every CSV row previews in the selected theme).
 
-| Theme | Look | Use for |
+**Risk** = chance Gmail files it under Promotions instead of Primary. For cold
+outreach, lower is better.
+
+| Theme | Look | Risk |
 | --- | --- | --- |
-| `plain` (default) | Near-raw HTML in a 600px column | **Cold outreach.** Reads person-to-person and lands in Gmail *Primary*. |
-| `branded` | Wordmark header, gold accent rule, highlights panel, CTA button, dark footer | Warm contacts, post-interview follow-ups, design-conscious companies. |
+| `plain` *(default)* | Near-raw HTML in a 600px column. Reads person-to-person. | low |
+| `minimal` | Accent hairline over a name block. Safest visual upgrade. | low |
+| `sidebar` | Full-height colour bar down the left edge. | low |
+| `resume` | Two-column header with a "Selected Work" table. Formal, CV-like. | medium |
+| `editorial` | Serif, airy, numbered highlights. Warm — good for longer notes. | medium |
+| `branded` | Wordmark header, gold accent panel, CTA button, dark footer. | medium |
+| `terminal` | Dark card, mono type, shell prompt. Great for eng teams. | high |
 
-The branded theme is typographic only — **no logo image is required**, so nothing
-breaks when a client blocks remote images. In branded mode any `<ul>` in your
-template is lifted out and rendered in the accent panel automatically.
+`GET /api/themes` returns the list with labels and risk. `GET /api/gallery`
+renders all seven side by side with sample content.
+
+All themes are typographic — **no logo image is required**, so nothing breaks when
+a client blocks remote images. In every theme except `plain`, any `<ul>` in your
+template is lifted out and rendered in that theme's own highlight treatment
+(em-dashes, `+` markers, a numbered list, or a bordered table).
 
 Built for real mail clients: table layout, fully inline styles, no `<style>`
 block, no JS, no web fonts, 600px cap, VML fallback for Outlook buttons, and a
