@@ -31,6 +31,12 @@ const CSVEmailSender = () => {
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
 
+  // One rendered preview per CSV row.
+  const [batchPreviews, setBatchPreviews] = useState([]);
+  const [batchAttachment, setBatchAttachment] = useState(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
 
@@ -76,7 +82,11 @@ const CSVEmailSender = () => {
               emailTemplate: row.emailTemplate || '',
             }));
           setCsvData(rows);
-          if (!rows.length) setError('No rows with both "name" and "email" were found.');
+          setExpanded(null);
+          if (!rows.length) {
+            setBatchPreviews([]);
+            setError('No rows with both "name" and "email" were found.');
+          }
         },
       });
     } catch (err) {
@@ -183,6 +193,45 @@ const CSVEmailSender = () => {
       setSending(false);
     }
   };
+
+  // ─── Render a preview for every parsed row ────────────────────────────────
+  const loadBatchPreviews = useCallback(
+    async (rows, activeTheme) => {
+      const list = rows ?? csvData;
+      if (!list.length) {
+        setBatchPreviews([]);
+        return;
+      }
+
+      setBatchLoading(true);
+      try {
+        const { data } = await api.post('/preview/batch', {
+          candidates: list,
+          emailSubject: subject,
+          emailTemplate: template,
+          theme: activeTheme ?? theme,
+        });
+        setBatchPreviews(data.previews || []);
+        setBatchAttachment(data.attachment || null);
+      } catch (err) {
+        console.error('Batch preview failed:', err);
+        setError(err.response?.data?.message || 'Could not render previews.');
+        setBatchPreviews([]);
+      } finally {
+        setBatchLoading(false);
+      }
+    },
+    [csvData, subject, template, theme]
+  );
+
+  // Re-render whenever the theme or shared copy changes (debounced so typing
+  // in the template textarea does not fire a request per keystroke).
+  useEffect(() => {
+    if (!csvData.length) return undefined;
+    const id = setTimeout(() => loadBatchPreviews(csvData, theme), 400);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme, subject, template, csvData]);
 
   // ─── Dry run: render without sending ──────────────────────────────────────
   const showPreview = async (candidate) => {
@@ -371,27 +420,79 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <h2>Candidate preview</h2>
-      {!csvData.length && <p className="hint">Nothing parsed yet.</p>}
-      {csvData.map((row, i) => (
-        <div key={`${row.email}-${i}`} className="candidate">
-          <p className="meta">
-            <b>{row.name}</b> — {row.email}
-            {row.cc ? ` (CC: ${row.cc})` : ''} — {row.companyName} — {row.jobDescription}{' '}
-            {row.jobId && <span className="tag">(ID: {row.jobId})</span>}
-          </p>
-          <p className="subject">Subject: {row.emailSubject || subject}</p>
-          <button className="ghost small" onClick={() => showPreview(row)} disabled={previewing}>
-            Preview this
-          </button>
-          <textarea
-            rows={4}
-            value={row.emailTemplate || ''}
-            placeholder="Leave empty to use the shared template above"
-            onChange={(e) => updateRow(i, 'emailTemplate', e.target.value)}
-          />
-        </div>
-      ))}
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>
+          Candidate previews{csvData.length ? ` (${csvData.length})` : ''}
+        </h2>
+        {csvData.length > 0 && (
+          <span className="hint">
+            {batchLoading ? 'Rendering...' : `Theme: ${theme}`}
+            {batchAttachment && ` · ${batchAttachment}`}
+          </span>
+        )}
+      </div>
+
+      {!csvData.length && <p className="hint">Upload and parse a CSV to see every email here.</p>}
+
+      {csvData.length > 0 && (
+        <p className="hint">
+          Each card is the real rendered email for that row. Click a card to enlarge, or edit
+          its template below the preview to override the shared copy.
+        </p>
+      )}
+
+      <div className="preview-grid">
+        {csvData.map((row, i) => {
+          const p = batchPreviews.find((b) => b.index === i);
+          const isOpen = expanded === i;
+
+          return (
+            <div key={`${row.email}-${i}`} className={`pcard ${isOpen ? 'open' : ''}`}>
+              <div className="pcard-head">
+                <div className="pcard-to">
+                  <b>{row.name}</b> &lt;{row.email}&gt;
+                  {row.cc && <span className="hint"> · CC: {row.cc}</span>}
+                </div>
+                <div className="pcard-sub">{p?.subject || row.emailSubject || subject}</div>
+                <div className="pcard-meta">
+                  {row.companyName} · {row.jobDescription}
+                  {row.jobId && <span className="tag"> · ID: {row.jobId}</span>}
+                </div>
+              </div>
+
+              {p?.error ? (
+                <div className="pcard-err">{p.error}</div>
+              ) : p ? (
+                <div
+                  className="pcard-frame-wrap"
+                  onClick={() => setExpanded(isOpen ? null : i)}
+                  title={isOpen ? 'Click to shrink' : 'Click to enlarge'}
+                >
+                  <iframe
+                    title={`Preview ${row.email}`}
+                    srcDoc={p.html}
+                    className="pcard-frame"
+                    sandbox=""
+                    scrolling="no"
+                  />
+                </div>
+              ) : (
+                <div className="pcard-skel">{batchLoading ? 'Rendering...' : 'No preview'}</div>
+              )}
+
+              <details className="pcard-edit">
+                <summary>Override template for this row</summary>
+                <textarea
+                  rows={5}
+                  value={row.emailTemplate || ''}
+                  placeholder="Leave empty to use the shared template above"
+                  onChange={(e) => updateRow(i, 'emailTemplate', e.target.value)}
+                />
+              </details>
+            </div>
+          );
+        })}
+      </div>
 
       {followUps.length > 0 && (
         <>

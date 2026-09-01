@@ -89,3 +89,68 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 button.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; }
 button.ghost:disabled { background: #f3f4f6; color: #9ca3af; }
 button.small { padding: 5px 10px; font-size: 12px; margin-bottom: 6px; }
+
+/* ── Per-candidate preview grid ───────────────────────────────── */
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.pcard {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pcard.open { grid-column: 1 / -1; }
+.pcard-head { padding: 10px 12px; border-bottom: 1px solid #f1f2f4; }
+.pcard-to { font-size: 13px; color: #111827; word-break: break-all; }
+.pcard-sub { font-size: 12.5px; color: #374151; margin-top: 3px; font-weight: 600; }
+.pcard-meta { font-size: 11.5px; color: #9ca3af; margin-top: 3px; }
+
+.pcard-frame-wrap {
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: #fff;
+  border-bottom: 1px solid #f1f2f4;
+}
+.pcard.open .pcard-frame-wrap { height: 640px; cursor: zoom-out; }
+.pcard-frame {
+  width: 166%;
+  height: 166%;
+  border: 0;
+  transform: scale(0.6);
+  transform-origin: top left;
+  pointer-events: none;
+}
+.pcard.open .pcard-frame {
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+.pcard-skel,
+.pcard-err {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  color: #9ca3af;
+}
+.pcard-err { color: #b91c1c; height: auto; padding: 14px; text-align: center; }
+
+.pcard-edit { border-top: 1px solid #f1f2f4; }
+.pcard-edit summary {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+}
+.pcard-edit textarea { border: 0; border-top: 1px solid #f1f2f4; border-radius: 0; font-size: 12px; }

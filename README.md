@@ -58,6 +58,16 @@ Customize the sender identity with `BRAND_WORDMARK`, `BRAND_TAGLINE`,
 
 ### Preview / dry run
 
+After parsing a CSV the UI renders **every row as its own preview card** — the real
+email for that recipient, with their name, company and job id substituted. Click a
+card to enlarge it; expand *Override template for this row* to give one person
+different copy. Previews re-render automatically when you switch theme or edit the
+shared subject/body (debounced).
+
+`POST /api/preview/batch` powers this — it renders an array of candidates in one
+call and never opens an SMTP connection.
+
+
 `POST /api/preview` renders exactly what would be sent **without opening an SMTP
 connection**. The UI shows it in a sandboxed iframe — hit *Preview (dry run)* for
 a sample, or *Preview this* on any parsed row.

@@ -251,6 +251,68 @@ router.post('/preview', (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/preview/batch — render every candidate at once, without sending.
+ * Lets the UI show a preview card per CSV row right after upload.
+ *
+ * body: { candidates: [...], emailSubject, emailTemplate, theme }
+ * Per-row emailSubject/emailTemplate still win over the shared copy, exactly
+ * as they do when sending.
+ */
+router.post('/preview/batch', (req, res, next) => {
+  try {
+    const { candidates, emailSubject, emailTemplate, theme } = req.body || {};
+
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return res.status(400).json({ message: 'Candidates array is required' });
+    }
+
+    const chosen = THEMES.includes(theme) ? theme : DEFAULT_THEME;
+    const file = resolveAttachmentPath();
+
+    const previews = candidates.map((candidate, index) => {
+      const rawSubject = candidate?.emailSubject || emailSubject;
+      const rawHtml = candidate?.emailTemplate || emailTemplate;
+
+      if (!rawSubject || !rawHtml) {
+        return {
+          index,
+          email: candidate?.email,
+          name: candidate?.name,
+          error: 'No subject/template for this candidate',
+        };
+      }
+
+      try {
+        const composed = composeEmail({
+          subject: rawSubject,
+          template: rawHtml,
+          candidate,
+          theme: candidate?.theme || chosen,
+        });
+        return {
+          index,
+          email: candidate?.email,
+          name: candidate?.name,
+          cc: normalizeCc(candidate?.cc) || null,
+          ...composed,
+        };
+      } catch (err) {
+        return { index, email: candidate?.email, name: candidate?.name, error: err.message };
+      }
+    });
+
+    res.json({
+      theme: chosen,
+      attachment: file ? path.basename(file) : null,
+      count: previews.length,
+      previews,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /api/attachment — quick check that the resume is actually being picked up. */
 router.get('/attachment', (req, res) => {
   const file = resolveAttachmentPath();
