@@ -20,6 +20,9 @@ const CSVEmailSender = () => {
   const [csvFile, setCsvFile] = useState(null);
   const [csvData, setCsvData] = useState([]);
   const [followUps, setFollowUps] = useState([]);
+  const [batches, setBatches] = useState([]);
+  // Identity of the CSV currently loaded — sends are filed under this batch.
+  const [batchInfo, setBatchInfo] = useState(null);
   const [error, setError] = useState('');
 
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
@@ -37,6 +40,7 @@ const CSVEmailSender = () => {
   const [batchAttachment, setBatchAttachment] = useState(null);
   const [batchLoading, setBatchLoading] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [openBatch, setOpenBatch] = useState(null);
 
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
@@ -45,9 +49,11 @@ const CSVEmailSender = () => {
     try {
       const res = await api.get('/followups');
       setFollowUps(res.data.candidates || []);
+      setBatches(res.data.batches || []);
     } catch (err) {
       console.error('Failed to fetch follow-ups:', err);
       setFollowUps([]);
+      setBatches([]);
     }
   }, []);
 
@@ -91,6 +97,11 @@ const CSVEmailSender = () => {
             }));
           setCsvData(rows);
           setExpanded(null);
+          // Every upload becomes its own follow-up batch.
+          setBatchInfo({
+            id: `b_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
+            label: csvFile?.name || 'upload.csv',
+          });
           if (!rows.length) {
             setBatchPreviews([]);
             setError('No rows with both "name" and "email" were found.');
@@ -130,6 +141,8 @@ const CSVEmailSender = () => {
           emailSubject: subject,
           emailTemplate: template,
           theme,
+          batchId: batchInfo?.id,
+          batchLabel: batchInfo?.label,
         });
         failures += res.data.failCount || 0;
 
@@ -152,13 +165,15 @@ const CSVEmailSender = () => {
   };
 
   // ─── Send follow-ups ──────────────────────────────────────────────────────
-  const sendFollowUpEmails = async () => {
+  const sendFollowUpEmails = async (targetBatch) => {
     setError('');
     setSending(true);
     setProgress({ current: 0, total: 0, status: 'Fetching follow-up data...' });
 
     try {
-      const { data } = await api.get('/followups');
+      const { data } = await api.get('/followups', {
+        params: targetBatch ? { batchId: targetBatch.id } : {},
+      });
       const pending = data.candidates || [];
 
       if (!pending.length) {
@@ -181,6 +196,7 @@ const CSVEmailSender = () => {
           emailSubject: followUpSubject,
           emailTemplate: followUpTemplate,
           theme,
+          batchId: candidate.batchId || targetBatch?.id,
         });
         failures += res.data.failCount || 0;
 
@@ -266,6 +282,17 @@ const CSVEmailSender = () => {
       setError(err.response?.data?.message || 'Preview failed.');
     } finally {
       setPreviewing(false);
+    }
+  };
+
+  const discardBatch = async (b) => {
+    if (!window.confirm(`Discard "${b.label}" (${b.count} pending) without emailing?`)) return;
+    try {
+      await api.delete(`/followups/batches/${b.id}`);
+      await fetchFollowUps();
+    } catch (err) {
+      console.error('Discard failed:', err);
+      setError(err.response?.data?.message || 'Could not discard that batch.');
     }
   };
 
@@ -403,10 +430,11 @@ const CSVEmailSender = () => {
         </button>
         <button
           className="tertiary"
-          onClick={sendFollowUpEmails}
+          onClick={() => sendFollowUpEmails()}
           disabled={sending || followUps.length === 0}
+          title="Follow up with every pending batch"
         >
-          {sending ? 'Working...' : `Send Follow-Ups (${followUps.length})`}
+          {sending ? 'Working...' : `Send All Follow-Ups (${followUps.length})`}
         </button>
       </div>
 
@@ -532,19 +560,72 @@ const CSVEmailSender = () => {
         })}
       </div>
 
-      {followUps.length > 0 && (
+      {batches.length > 0 && (
         <>
-          <h2>Pending follow-ups ({followUps.length})</h2>
-          {followUps.map((c) => (
-            <div key={c.email} className="candidate">
-              <p className="meta">
-                <b>{c.name || c.email}</b> — {c.email} — {c.companyName}
-              </p>
-              <p className="subject">Original subject: {c.subject}</p>
-            </div>
-          ))}
+          <h2>Pending follow-ups by upload ({followUps.length})</h2>
+          <p className="hint">
+            Each CSV upload is its own batch, so you can follow up one file at a time instead of
+            everyone at once. Sent follow-ups leave the batch automatically.
+          </p>
+
+          {batches.map((b) => {
+            const rows = followUps.filter((c) => c.batchId === b.id);
+            const open = openBatch === b.id;
+
+            return (
+              <div key={b.id} className="batch">
+                <div className="batch-head">
+                  <div>
+                    <b>{b.label}</b>
+                    <span className="hint">
+                      {' '}
+                      · {b.count} pending · {new Date(b.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="batch-actions">
+                    <button
+                      className="ghost small"
+                      onClick={() => setOpenBatch(open ? null : b.id)}
+                    >
+                      {open ? 'Hide' : 'Show'}
+                    </button>
+                    <button
+                      className="tertiary small"
+                      onClick={() => sendFollowUpEmails(b)}
+                      disabled={sending}
+                    >
+                      Follow up ({b.count})
+                    </button>
+                    <button
+                      className="ghost small danger"
+                      onClick={() => discardBatch(b)}
+                      disabled={sending}
+                      title="Remove without emailing"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+
+                {open && (
+                  <div className="batch-body">
+                    {rows.map((c) => (
+                      <div key={`${b.id}-${c.email}`} className="candidate">
+                        <p className="meta">
+                          <b>{c.name || c.email}</b> — {c.email}
+                          {c.companyName ? ` — ${c.companyName}` : ''}
+                        </p>
+                        <p className="subject">Original subject: {c.subject}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </>
       )}
+
     </div>
   );
 };

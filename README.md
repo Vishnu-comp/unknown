@@ -96,6 +96,23 @@ curl -X POST localhost:3000/api/preview -H 'content-type: application/json' \
        "emailTemplate":"<p>Hi [user name]</p>","theme":"branded"}'
 ```
 
+### Follow-ups are grouped per upload
+
+Each CSV upload becomes its own **batch**, so a second upload does not merge into
+the first. You can follow up one file at a time instead of mailing everyone at
+once, and each batch can be discarded without sending.
+
+```
+GET    /api/followups                 all pending, each row tagged with its batch
+GET    /api/followups?batchId=...     just that upload
+GET    /api/followups/batches         batch summaries (label, count, createdAt)
+POST   /api/sendFollowUpEmails        { batchId } follows up that whole batch
+DELETE /api/followups/batches/:id     discard without emailing
+```
+
+`messageStore.json` is versioned; an older flat store is migrated automatically
+into a single "Earlier sends" batch on first read, so existing data keeps working.
+
 ### Resume attachment
 
 Drop your PDF at `backend/assets/resume.pdf` and it is attached to every initial

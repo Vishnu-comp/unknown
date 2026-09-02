@@ -140,7 +140,8 @@ function buildAttachments() {
  * Sends sequentially, stores each Message-ID for later follow-ups.
  */
 router.post('/sendCustomEmails', async (req, res, next) => {
-  const { candidates, emailSubject, emailTemplate, theme } = req.body || {};
+  const { candidates, emailSubject, emailTemplate, theme, batchId, batchLabel } =
+    req.body || {};
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return res.status(400).json({ message: 'No candidates provided' });
@@ -186,16 +187,21 @@ router.post('/sendCustomEmails', async (req, res, next) => {
           attachments: buildAttachments(),
         });
 
-        await store.save(candidate.email, {
-          messageId: info.messageId,
-          subject,
-          name: candidate.name,
-          companyName: candidate.companyName,
-          jobDescription: candidate.jobDescription,
-          jobId: candidate.jobId || '',
-          cc,
-          sentAt: new Date().toISOString(),
-        });
+        await store.save(
+          candidate.email,
+          {
+            messageId: info.messageId,
+            subject,
+            name: candidate.name,
+            companyName: candidate.companyName,
+            jobDescription: candidate.jobDescription,
+            jobId: candidate.jobId || '',
+            cc,
+            theme: candidate.theme || theme || undefined,
+            sentAt: new Date().toISOString(),
+          },
+          { batchId, label: batchLabel }
+        );
 
         successCount++;
         results.push({ email: candidate.email, status: 'fulfilled' });
@@ -331,6 +337,25 @@ router.post('/preview/batch', (req, res, next) => {
   }
 });
 
+/** GET /api/followups/batches — upload batches with pending follow-ups. */
+router.get('/followups/batches', async (req, res, next) => {
+  try {
+    res.status(200).json({ batches: await store.listBatches() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** DELETE /api/followups/batches/:batchId — discard a batch without mailing. */
+router.delete('/followups/batches/:batchId', async (req, res, next) => {
+  try {
+    await store.removeBatch(req.params.batchId);
+    res.status(200).json({ message: 'Batch removed', batches: await store.listBatches() });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /api/attachment — quick check that the resume is actually being picked up. */
 router.get('/attachment', (req, res) => {
   const file = resolveAttachmentPath();
@@ -346,7 +371,11 @@ router.get('/attachment', (req, res) => {
 /** GET /api/followups — candidates awaiting a follow-up. */
 router.get('/followups', async (req, res, next) => {
   try {
-    res.status(200).json({ candidates: await store.listCandidates() });
+    const { batchId } = req.query;
+    res.status(200).json({
+      batches: await store.listBatches(),
+      candidates: await store.listCandidates(batchId),
+    });
   } catch (err) {
     next(err);
   }
@@ -358,10 +387,25 @@ router.get('/followups', async (req, res, next) => {
  * Successful follow-ups are removed from the store so nobody is chased twice.
  */
 router.post('/sendFollowUpEmails', async (req, res, next) => {
-  const { candidates, emailSubject, emailTemplate, theme } = req.body || {};
+  const {
+    candidates: bodyCandidates,
+    emailSubject,
+    emailTemplate,
+    theme,
+    batchId,
+  } = req.body || {};
+
+  // Either pass explicit candidates, or just a batchId to follow up that
+  // whole upload without listing everyone client-side.
+  let candidates = bodyCandidates;
+  if ((!Array.isArray(candidates) || candidates.length === 0) && batchId) {
+    candidates = await store.listCandidates(batchId);
+  }
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return res.status(400).json({ message: 'Candidates array is required' });
+    return res
+      .status(400)
+      .json({ message: 'Provide a candidates array or a batchId with pending follow-ups' });
   }
 
   try {
@@ -375,7 +419,10 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
 
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      const stored = candidate?.email ? await store.get(candidate.email) : undefined;
+      const rowBatchId = candidate?.batchId || batchId;
+      const stored = candidate?.email
+        ? await store.get(candidate.email, rowBatchId)
+        : undefined;
 
       if (!stored?.messageId) {
         skippedCount++;
@@ -418,7 +465,7 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
           references: [stored.messageId],
         });
 
-        await store.remove(candidate.email);
+        await store.remove(candidate.email, rowBatchId || stored.batchId);
 
         successCount++;
         results.push({ email: candidate.email, status: 'fulfilled' });

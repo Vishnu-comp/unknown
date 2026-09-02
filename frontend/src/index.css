@@ -216,3 +216,26 @@ button.linkish {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ── Follow-up batches ────────────────────────────────────────── */
+.batch {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.batch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+.batch-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.batch-body { border-top: 1px solid #f1f2f4; padding: 10px 14px; background: #fafafa; }
+.batch-body .candidate { margin-bottom: 8px; }
+.batch-body .candidate:last-child { margin-bottom: 0; }
+button.danger { color: #b91c1c; border-color: #fecaca; }
+button.danger:hover { background: #fef2f2; }
