@@ -132,12 +132,99 @@ function buildAttachments() {
 }
 
 /**
+ * Core send loop, shared by the immediate route and the scheduler.
+ * Sends sequentially and records each Message-ID for later follow-ups.
+ */
+export async function runSendJob({
+  candidates,
+  emailSubject,
+  emailTemplate,
+  theme,
+  batchId,
+  batchLabel,
+  onProgress,
+}) {
+  assertMailConfig();
+  const transporter = getTransporter();
+
+  const results = [];
+  let successCount = 0;
+  let failCount = 0;
+
+  console.log(`Starting email job for ${candidates.length} candidate(s)`);
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+
+    try {
+      if (!candidate?.email) throw new Error('Candidate is missing an email address');
+
+      const rawSubject = candidate.emailSubject || emailSubject;
+      const rawHtml = candidate.emailTemplate || emailTemplate;
+      if (!rawSubject || !rawHtml) {
+        throw new Error('No subject/template provided for this candidate');
+      }
+
+      const { subject, html, text } = composeEmail({
+        subject: rawSubject,
+        template: rawHtml,
+        candidate,
+        theme: candidate.theme || theme,
+      });
+      const cc = normalizeCc(candidate.cc);
+
+      const info = await transporter.sendMail({
+        from: process.env.EMAIL_USERNAME,
+        to: candidate.email,
+        cc,
+        subject,
+        html,
+        text,
+        attachments: buildAttachments(),
+      });
+
+      await store.save(
+        candidate.email,
+        {
+          messageId: info.messageId,
+          subject,
+          name: candidate.name,
+          companyName: candidate.companyName,
+          jobDescription: candidate.jobDescription,
+          jobId: candidate.jobId || '',
+          cc,
+          theme: candidate.theme || theme || undefined,
+          sentAt: new Date().toISOString(),
+        },
+        { batchId, label: batchLabel }
+      );
+
+      successCount++;
+      results.push({ email: candidate.email, status: 'fulfilled' });
+      console.log(`Sent to ${candidate.email} (${successCount} ok so far)`);
+    } catch (err) {
+      failCount++;
+      results.push({ email: candidate?.email, status: 'rejected', reason: err.message });
+      console.error(`Failed to send to ${candidate?.email}: ${err.message}`);
+    }
+
+    if (typeof onProgress === 'function') {
+      await onProgress({ sent: successCount, failed: failCount, total: candidates.length });
+    }
+
+    if (i < candidates.length - 1 && SEND_DELAY_MS > 0) {
+      await sleep(SEND_DELAY_MS);
+    }
+  }
+
+  console.log(`Job finished: ${successCount} success, ${failCount} failed`);
+  return { successCount, failCount, results };
+}
+
+/**
  * POST /api/sendCustomEmails
- * body: { candidates: [{ email, name, companyName, jobDescription, jobId, cc,
- *                        emailSubject?, emailTemplate? }],
- *         emailSubject?, emailTemplate? }
- *
- * Sends sequentially, stores each Message-ID for later follow-ups.
+ * body: { candidates, emailSubject, emailTemplate, theme, batchId, batchLabel }
+ * Sends immediately.
  */
 router.post('/sendCustomEmails', async (req, res, next) => {
   const { candidates, emailSubject, emailTemplate, theme, batchId, batchLabel } =
@@ -148,85 +235,21 @@ router.post('/sendCustomEmails', async (req, res, next) => {
   }
 
   try {
-    assertMailConfig();
-    const transporter = getTransporter();
+    const { successCount, failCount, results } = await runSendJob({
+      candidates,
+      emailSubject,
+      emailTemplate,
+      theme,
+      batchId,
+      batchLabel,
+    });
 
-    const results = [];
-    let successCount = 0;
-    let failCount = 0;
-
-    console.log(`Starting email job for ${candidates.length} candidate(s)`);
-
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-
-      try {
-        if (!candidate?.email) throw new Error('Candidate is missing an email address');
-
-        const rawSubject = candidate.emailSubject || emailSubject;
-        const rawHtml = candidate.emailTemplate || emailTemplate;
-        if (!rawSubject || !rawHtml) {
-          throw new Error('No subject/template provided for this candidate');
-        }
-
-        const { subject, html, text } = composeEmail({
-          subject: rawSubject,
-          template: rawHtml,
-          candidate,
-          theme: candidate.theme || theme,
-        });
-        const cc = normalizeCc(candidate.cc);
-
-        const info = await transporter.sendMail({
-          from: process.env.EMAIL_USERNAME,
-          to: candidate.email,
-          cc,
-          subject,
-          html,
-          text,
-          attachments: buildAttachments(),
-        });
-
-        await store.save(
-          candidate.email,
-          {
-            messageId: info.messageId,
-            subject,
-            name: candidate.name,
-            companyName: candidate.companyName,
-            jobDescription: candidate.jobDescription,
-            jobId: candidate.jobId || '',
-            cc,
-            theme: candidate.theme || theme || undefined,
-            sentAt: new Date().toISOString(),
-          },
-          { batchId, label: batchLabel }
-        );
-
-        successCount++;
-        results.push({ email: candidate.email, status: 'fulfilled' });
-        console.log(`Sent to ${candidate.email} (${successCount} ok so far)`);
-      } catch (err) {
-        failCount++;
-        results.push({ email: candidate?.email, status: 'rejected', reason: err.message });
-        console.error(`Failed to send to ${candidate?.email}: ${err.message}`);
-      }
-
-      if (i < candidates.length - 1 && SEND_DELAY_MS > 0) {
-        await sleep(SEND_DELAY_MS);
-      }
-    }
-
-    console.log(`Job finished: ${successCount} success, ${failCount} failed`);
-
-    return res
-      .status(failCount ? 207 : 200)
-      .json({
-        message: failCount ? `${failCount} email(s) failed` : 'All emails sent successfully',
-        successCount,
-        failCount,
-        results,
-      });
+    return res.status(failCount ? 207 : 200).json({
+      message: failCount ? `${failCount} email(s) failed` : 'All emails sent successfully',
+      successCount,
+      failCount,
+      results,
+    });
   } catch (err) {
     return next(err);
   }

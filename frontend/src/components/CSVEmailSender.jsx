@@ -23,6 +23,8 @@ const CSVEmailSender = () => {
   const [batches, setBatches] = useState([]);
   // Identity of the CSV currently loaded — sends are filed under this batch.
   const [batchInfo, setBatchInfo] = useState(null);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [jobs, setJobs] = useState([]);
   const [error, setError] = useState('');
 
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
@@ -60,6 +62,22 @@ const CSVEmailSender = () => {
   useEffect(() => {
     fetchFollowUps();
   }, [fetchFollowUps]);
+
+  const fetchJobs = useCallback(async () => {
+    try {
+      const { data } = await api.get('/schedule');
+      setJobs(data.jobs || []);
+    } catch (err) {
+      console.error('Failed to load scheduled jobs:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJobs();
+    // Poll so a job that fires server-side updates without a manual refresh.
+    const id = setInterval(fetchJobs, 15000);
+    return () => clearInterval(id);
+  }, [fetchJobs]);
 
   useEffect(() => {
     api
@@ -285,6 +303,59 @@ const CSVEmailSender = () => {
     }
   };
 
+  const scheduleSend = async () => {
+    setError('');
+    if (!csvData.length) {
+      setError('Upload a CSV before scheduling.');
+      return;
+    }
+    if (!scheduleAt) {
+      setError('Pick a date and time to send.');
+      return;
+    }
+
+    // datetime-local is local wall-clock; convert to an absolute instant.
+    const when = new Date(scheduleAt);
+    if (Number.isNaN(when.getTime())) {
+      setError('That date/time is not valid.');
+      return;
+    }
+    if (when.getTime() < Date.now()) {
+      setError('That time is in the past.');
+      return;
+    }
+
+    try {
+      await api.post('/schedule', {
+        runAt: when.toISOString(),
+        label: batchInfo?.label || 'Scheduled send',
+        candidates: csvData,
+        emailSubject: subject,
+        emailTemplate: template,
+        theme,
+        batchId: batchInfo?.id,
+        batchLabel: batchInfo?.label,
+      });
+      setScheduleAt('');
+      await fetchJobs();
+    } catch (err) {
+      console.error('Schedule failed:', err);
+      setError(err.response?.data?.message || 'Could not schedule that send.');
+    }
+  };
+
+  const cancelJob = async (job) => {
+    const verb = job.status === 'scheduled' ? 'Cancel' : 'Remove';
+    if (!window.confirm(`${verb} "${job.label}"?`)) return;
+    try {
+      await api.delete(`/schedule/${job.id}`);
+      await fetchJobs();
+    } catch (err) {
+      console.error('Cancel failed:', err);
+      setError(err.response?.data?.message || 'Could not cancel that job.');
+    }
+  };
+
   const discardBatch = async (b) => {
     if (!window.confirm(`Discard "${b.label}" (${b.count} pending) without emailing?`)) return;
     try {
@@ -421,6 +492,58 @@ const CSVEmailSender = () => {
             className="preview-frame"
             sandbox=""
           />
+        </div>
+      )}
+
+      <div className="card">
+        <h2>Schedule for later</h2>
+        <p className="hint">
+          Queues this CSV to send at a chosen time. Gmail&rsquo;s own
+          &ldquo;Schedule send&rdquo; is only in its web/mobile UI and cannot be reached over
+          SMTP, so the delay is handled by this backend &mdash; it must be running at the
+          scheduled moment. Deploy it somewhere always-on (see DEPLOY.md) if you want sends to
+          fire with your laptop closed.
+        </p>
+        <div className="row">
+          <input
+            type="datetime-local"
+            value={scheduleAt}
+            onChange={(e) => setScheduleAt(e.target.value)}
+            className="dt"
+          />
+          <button onClick={scheduleSend} disabled={sending || !csvData.length || !scheduleAt}>
+            Schedule {csvData.length ? `(${csvData.length})` : ''}
+          </button>
+          {scheduleAt && (
+            <span className="hint">
+              Sends {new Date(scheduleAt).toLocaleString()} &middot; your local time
+            </span>
+          )}
+        </div>
+      </div>
+
+      {jobs.length > 0 && (
+        <div className="card">
+          <h2>Scheduled sends ({jobs.filter((j) => j.status === 'scheduled').length} pending)</h2>
+          {jobs.map((j) => (
+            <div key={j.id} className="jobrow">
+              <div>
+                <b>{j.label}</b>
+                <span className={`jstatus j-${j.status}`}>{j.status}</span>
+                <div className="hint">
+                  {new Date(j.runAt).toLocaleString()} &middot; {j.recipientCount} recipient
+                  {j.recipientCount === 1 ? '' : 's'}
+                  {j.progress && (j.status === 'done' || j.status === 'failed') && (
+                    <> &middot; {j.progress.sent} sent, {j.progress.failed} failed</>
+                  )}
+                  {j.error && <> &middot; {j.error}</>}
+                </div>
+              </div>
+              <button className="ghost small danger" onClick={() => cancelJob(j)}>
+                {j.status === 'scheduled' ? 'Cancel' : 'Remove'}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

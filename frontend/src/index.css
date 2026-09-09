@@ -239,3 +239,39 @@ button.linkish {
 .batch-body .candidate:last-child { margin-bottom: 0; }
 button.danger { color: #b91c1c; border-color: #fecaca; }
 button.danger:hover { background: #fef2f2; }
+
+/* ── Scheduled sends ──────────────────────────────────────────── */
+input.dt {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+}
+.jobrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #f1f2f4;
+  flex-wrap: wrap;
+}
+.jobrow:first-of-type { border-top: 0; }
+.jstatus {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid currentColor;
+}
+.j-scheduled { color: #2563eb; }
+.j-running { color: #d97706; }
+.j-done { color: #16a34a; }
+.j-failed { color: #dc2626; }
+.j-cancelled { color: #9ca3af; }

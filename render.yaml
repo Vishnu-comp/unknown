@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: csv-email-sender-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: SEND_DELAY_MS
+        value: "15000"
+      # Set these in the Render dashboard, never in this file.
+      - key: EMAIL_USERNAME
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      # Free tier has no disk: queued jobs are lost on redeploy.
+      # Add a disk and uncomment these to persist them.
+      # - key: SCHEDULE_STORE_PATH
+      #   value: /data/scheduleStore.json
+      # - key: MESSAGE_STORE_PATH
+      #   value: /data/messageStore.json
+    # disk:
+    #   name: data
+    #   mountPath: /data
+    #   sizeGB: 1

@@ -96,6 +96,27 @@ curl -X POST localhost:3000/api/preview -H 'content-type: application/json' \
        "emailTemplate":"<p>Hi [user name]</p>","theme":"branded"}'
 ```
 
+### Scheduled sends ("send later")
+
+Pick a date/time and the batch is queued instead of sent now.
+
+```
+GET    /api/schedule       jobs + serverTime + activeTimers
+POST   /api/schedule       { runAt (ISO), candidates, emailSubject, emailTemplate, theme, batchId }
+GET    /api/schedule/:id   one job with per-recipient results
+DELETE /api/schedule/:id   cancel a pending job / remove a finished one
+```
+
+Jobs persist to `scheduleStore.json` and are re-armed at boot, so a restart does
+not lose them. A job whose time passed while the process was down fires
+immediately on startup.
+
+> **Gmail's own "Schedule send" cannot be used here.** It exists only in Gmail's
+> web/mobile UI and is not exposed via SMTP or the Gmail API, so the delay is
+> handled by this backend — **it must be running at the scheduled time**. To have
+> sends fire with your laptop closed, deploy the backend somewhere always-on;
+> see [DEPLOY.md](DEPLOY.md).
+
 ### Follow-ups are grouped per upload
 
 Each CSV upload becomes its own **batch**, so a second upload does not merge into
@@ -175,6 +196,7 @@ See `backend/sample-candidates.csv`.
 | `BRAND_ACCENT` | `#B8944D` | Accent colour |
 | `BRAND_CTA_TEXT` / `BRAND_CTA_URL` | Portfolio link | Button in branded theme |
 | `MESSAGE_STORE_PATH` | `./messageStore.json` | Follow-up state file |
+| `SCHEDULE_STORE_PATH` | `./scheduleStore.json` | Scheduled job state file |
 
 ## Notes on the rewrite
 
