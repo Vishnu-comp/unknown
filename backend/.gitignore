@@ -3,5 +3,5 @@ node_modules/
 uploads/
 messageStore.json
 assets/*.pdf
-scheduleStore.json
+draftStore.json
 sink.test.mjs

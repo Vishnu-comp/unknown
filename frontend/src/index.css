@@ -241,14 +241,6 @@ button.danger { color: #b91c1c; border-color: #fecaca; }
 button.danger:hover { background: #fef2f2; }
 
 /* ── Scheduled sends ──────────────────────────────────────────── */
-input.dt {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 9px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #fff;
-}
 .jobrow {
   display: flex;
   justify-content: space-between;
@@ -270,8 +262,10 @@ input.dt {
   border-radius: 99px;
   border: 1px solid currentColor;
 }
-.j-scheduled { color: #2563eb; }
+.j-saved { color: #2563eb; }
 .j-running { color: #d97706; }
 .j-done { color: #16a34a; }
 .j-failed { color: #dc2626; }
 .j-cancelled { color: #9ca3af; }
+.hint.small { font-size: 11px; margin-top: 2px; }
+button.secondary.small { padding: 5px 12px; font-size: 12px; }

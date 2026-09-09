@@ -6,9 +6,7 @@ import path from 'path';
 import uploadRoutes from './routes/uploadCSV.js';
 import emailRoutes from './routes/sendEmails.js';
 import galleryRoutes from './routes/gallery.js';
-import scheduleRoutes from './routes/schedule.js';
-import { runSendJob } from './routes/sendEmails.js';
-import * as scheduler from './utils/scheduler.js';
+import draftRoutes from './routes/drafts.js';
 import { UPLOAD_DIR } from './routes/uploadCSV.js';
 
 dotenv.config();
@@ -31,8 +29,8 @@ app.use('/api', uploadRoutes);
 app.use('/api', emailRoutes);
 // Review-only theme gallery
 app.use('/api', galleryRoutes);
-// Scheduled "send later" jobs
-app.use('/api', scheduleRoutes);
+// Saved batches ("send later" = save now, send when you press Send)
+app.use('/api', draftRoutes);
 
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.originalUrl}` }));
 
@@ -46,21 +44,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Wire the scheduler to the shared send loop, then re-arm persisted jobs.
-scheduler.setRunner((job) =>
-  runSendJob({
-    candidates: job.candidates,
-    emailSubject: job.emailSubject,
-    emailTemplate: job.emailTemplate,
-    theme: job.theme,
-    batchId: job.batchId,
-    batchLabel: job.batchLabel,
-  })
-);
-
 app.listen(PORT, HOST, () => {
   console.log(`Server running at http://${HOST}:${PORT}`);
-  scheduler.restore().catch((err) => console.error('Scheduler restore failed:', err));
 });
 
 export default app;

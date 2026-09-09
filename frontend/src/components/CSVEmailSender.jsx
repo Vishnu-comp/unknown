@@ -23,8 +23,7 @@ const CSVEmailSender = () => {
   const [batches, setBatches] = useState([]);
   // Identity of the CSV currently loaded — sends are filed under this batch.
   const [batchInfo, setBatchInfo] = useState(null);
-  const [scheduleAt, setScheduleAt] = useState('');
-  const [jobs, setJobs] = useState([]);
+  const [drafts, setDrafts] = useState([]);
   const [error, setError] = useState('');
 
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
@@ -63,21 +62,18 @@ const CSVEmailSender = () => {
     fetchFollowUps();
   }, [fetchFollowUps]);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchDrafts = useCallback(async () => {
     try {
-      const { data } = await api.get('/schedule');
-      setJobs(data.jobs || []);
+      const { data } = await api.get('/drafts');
+      setDrafts(data.drafts || []);
     } catch (err) {
-      console.error('Failed to load scheduled jobs:', err);
+      console.error('Failed to load saved batches:', err);
     }
   }, []);
 
   useEffect(() => {
-    fetchJobs();
-    // Poll so a job that fires server-side updates without a manual refresh.
-    const id = setInterval(fetchJobs, 15000);
-    return () => clearInterval(id);
-  }, [fetchJobs]);
+    fetchDrafts();
+  }, [fetchDrafts]);
 
   useEffect(() => {
     api
@@ -303,56 +299,65 @@ const CSVEmailSender = () => {
     }
   };
 
-  const scheduleSend = async () => {
+  const saveForLater = async () => {
     setError('');
     if (!csvData.length) {
-      setError('Upload a CSV before scheduling.');
-      return;
-    }
-    if (!scheduleAt) {
-      setError('Pick a date and time to send.');
-      return;
-    }
-
-    // datetime-local is local wall-clock; convert to an absolute instant.
-    const when = new Date(scheduleAt);
-    if (Number.isNaN(when.getTime())) {
-      setError('That date/time is not valid.');
-      return;
-    }
-    if (when.getTime() < Date.now()) {
-      setError('That time is in the past.');
+      setError('Upload a CSV first.');
       return;
     }
 
     try {
-      await api.post('/schedule', {
-        runAt: when.toISOString(),
-        label: batchInfo?.label || 'Scheduled send',
+      await api.post('/drafts', {
         candidates: csvData,
         emailSubject: subject,
         emailTemplate: template,
         theme,
+        label: batchInfo?.label || 'Saved batch',
         batchId: batchInfo?.id,
         batchLabel: batchInfo?.label,
       });
-      setScheduleAt('');
-      await fetchJobs();
+      await fetchDrafts();
     } catch (err) {
-      console.error('Schedule failed:', err);
-      setError(err.response?.data?.message || 'Could not schedule that send.');
+      console.error('Save failed:', err);
+      setError(err.response?.data?.message || 'Could not save that batch.');
     }
   };
 
-  const cancelJob = async (job) => {
-    const verb = job.status === 'scheduled' ? 'Cancel' : 'Remove';
-    if (!window.confirm(`${verb} "${job.label}"?`)) return;
+  const sendDraft = async (d) => {
+    if (!window.confirm(`Send "${d.label}" to ${d.recipientCount} recipient(s) now?`)) return;
+
+    setError('');
+    setSending(true);
+    setProgress({ current: 0, total: d.recipientCount, status: `Sending ${d.label}...` });
+
     try {
-      await api.delete(`/schedule/${job.id}`);
-      await fetchJobs();
+      const { data } = await api.post(`/drafts/${d.id}/send`);
+      setProgress({
+        current: d.recipientCount,
+        total: d.recipientCount,
+        status: data.failCount
+          ? `${data.successCount} sent, ${data.failCount} failed (kept for retry).`
+          : `All ${data.successCount} sent.`,
+      });
+      setDrafts(data.drafts || []);
+      await fetchFollowUps();
     } catch (err) {
-      console.error('Cancel failed:', err);
-      setError(err.response?.data?.message || 'Could not cancel that job.');
+      console.error('Send failed:', err);
+      setError(err.response?.data?.message || 'Could not send that batch.');
+      setProgress((p) => ({ ...p, status: 'Failed. Check logs.' }));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteDraft = async (d) => {
+    if (!window.confirm(`Discard "${d.label}" without sending?`)) return;
+    try {
+      const { data } = await api.delete(`/drafts/${d.id}`);
+      setDrafts(data.drafts || []);
+    } catch (err) {
+      console.error('Discard failed:', err);
+      setError(err.response?.data?.message || 'Could not discard that batch.');
     }
   };
 
@@ -495,53 +500,41 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="card">
-        <h2>Schedule for later</h2>
-        <p className="hint">
-          Queues this CSV to send at a chosen time. Gmail&rsquo;s own
-          &ldquo;Schedule send&rdquo; is only in its web/mobile UI and cannot be reached over
-          SMTP, so the delay is handled by this backend &mdash; it must be running at the
-          scheduled moment. Deploy it somewhere always-on (see DEPLOY.md) if you want sends to
-          fire with your laptop closed.
-        </p>
-        <div className="row">
-          <input
-            type="datetime-local"
-            value={scheduleAt}
-            onChange={(e) => setScheduleAt(e.target.value)}
-            className="dt"
-          />
-          <button onClick={scheduleSend} disabled={sending || !csvData.length || !scheduleAt}>
-            Schedule {csvData.length ? `(${csvData.length})` : ''}
-          </button>
-          {scheduleAt && (
-            <span className="hint">
-              Sends {new Date(scheduleAt).toLocaleString()} &middot; your local time
-            </span>
-          )}
-        </div>
-      </div>
-
-      {jobs.length > 0 && (
+      {drafts.length > 0 && (
         <div className="card">
-          <h2>Scheduled sends ({jobs.filter((j) => j.status === 'scheduled').length} pending)</h2>
-          {jobs.map((j) => (
-            <div key={j.id} className="jobrow">
+          <h2>Saved batches ({drafts.length})</h2>
+          <p className="hint">
+            Saved on the server and sent only when you press Send now. Nothing goes out on its
+            own, so the server does not need to be running in between.
+          </p>
+          {drafts.map((d) => (
+            <div key={d.id} className="jobrow">
               <div>
-                <b>{j.label}</b>
-                <span className={`jstatus j-${j.status}`}>{j.status}</span>
+                <b>{d.label}</b>
+                <span className="jstatus j-saved">saved</span>
                 <div className="hint">
-                  {new Date(j.runAt).toLocaleString()} &middot; {j.recipientCount} recipient
-                  {j.recipientCount === 1 ? '' : 's'}
-                  {j.progress && (j.status === 'done' || j.status === 'failed') && (
-                    <> &middot; {j.progress.sent} sent, {j.progress.failed} failed</>
-                  )}
-                  {j.error && <> &middot; {j.error}</>}
+                  {d.recipientCount} recipient{d.recipientCount === 1 ? '' : 's'} &middot;{' '}
+                  {d.theme || 'plain'} &middot; saved {new Date(d.createdAt).toLocaleString()}
                 </div>
+                {d.recipients?.length > 0 && (
+                  <div className="hint small">
+                    {d.recipients.join(', ')}
+                    {d.recipientCount > d.recipients.length && ` +${d.recipientCount - d.recipients.length} more`}
+                  </div>
+                )}
               </div>
-              <button className="ghost small danger" onClick={() => cancelJob(j)}>
-                {j.status === 'scheduled' ? 'Cancel' : 'Remove'}
-              </button>
+              <div className="batch-actions">
+                <button className="secondary small" onClick={() => sendDraft(d)} disabled={sending}>
+                  Send now
+                </button>
+                <button
+                  className="ghost small danger"
+                  onClick={() => deleteDraft(d)}
+                  disabled={sending}
+                >
+                  Discard
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -549,7 +542,10 @@ const CSVEmailSender = () => {
 
       <div className="row">
         <button className="secondary" onClick={sendEmails} disabled={sending || !csvData.length}>
-          {sending ? 'Sending...' : `Send Emails (${csvData.length})`}
+          {sending ? 'Sending...' : `Send Now (${csvData.length})`}
+        </button>
+        <button onClick={saveForLater} disabled={sending || !csvData.length}>
+          Save for Later
         </button>
         <button
           className="tertiary"

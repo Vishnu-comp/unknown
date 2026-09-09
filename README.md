@@ -96,26 +96,22 @@ curl -X POST localhost:3000/api/preview -H 'content-type: application/json' \
        "emailTemplate":"<p>Hi [user name]</p>","theme":"branded"}'
 ```
 
-### Scheduled sends ("send later")
+### Send now or save for later
 
-Pick a date/time and the batch is queued instead of sent now.
+After parsing a CSV you can **Send Now**, or **Save for Later** to park the batch
+on the server. A saved batch sends only when you press **Send now** on it —
+nothing fires on a timer, so the server does not need to be running in between.
 
 ```
-GET    /api/schedule       jobs + serverTime + activeTimers
-POST   /api/schedule       { runAt (ISO), candidates, emailSubject, emailTemplate, theme, batchId }
-GET    /api/schedule/:id   one job with per-recipient results
-DELETE /api/schedule/:id   cancel a pending job / remove a finished one
+GET    /api/drafts           saved batches (summaries)
+GET    /api/drafts/:id       one batch with its candidates
+POST   /api/drafts           save a batch
+POST   /api/drafts/:id/send  send it now
+DELETE /api/drafts/:id       discard without sending
 ```
 
-Jobs persist to `scheduleStore.json` and are re-armed at boot, so a restart does
-not lose them. A job whose time passed while the process was down fires
-immediately on startup.
-
-> **Gmail's own "Schedule send" cannot be used here.** It exists only in Gmail's
-> web/mobile UI and is not exposed via SMTP or the Gmail API, so the delay is
-> handled by this backend — **it must be running at the scheduled time**. To have
-> sends fire with your laptop closed, deploy the backend somewhere always-on;
-> see [DEPLOY.md](DEPLOY.md).
+A batch is removed from the saved list once sent. If any recipient fails it is
+kept so you can retry.
 
 ### Follow-ups are grouped per upload
 
@@ -196,7 +192,7 @@ See `backend/sample-candidates.csv`.
 | `BRAND_ACCENT` | `#B8944D` | Accent colour |
 | `BRAND_CTA_TEXT` / `BRAND_CTA_URL` | Portfolio link | Button in branded theme |
 | `MESSAGE_STORE_PATH` | `./messageStore.json` | Follow-up state file |
-| `SCHEDULE_STORE_PATH` | `./scheduleStore.json` | Scheduled job state file |
+| `DRAFT_STORE_PATH` | `./draftStore.json` | Saved batches file |
 
 ## Notes on the rewrite
 
