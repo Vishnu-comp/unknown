@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 import { getTransporter, assertMailConfig } from '../utils/mailer.js';
 import * as store from '../utils/messageStore.js';
+import * as contacts from '../utils/contactStore.js';
 import {
   fillTemplate,
   normalizeQuotes,
@@ -198,6 +199,18 @@ export async function runSendJob({
         },
         { batchId, label: batchLabel }
       );
+
+      // Permanent contact log - never pruned, powers dedupe on the next upload.
+      await contacts.recordSend({
+        email: candidate.email,
+        name: candidate.name,
+        companyName: candidate.companyName,
+        subject,
+        theme: candidate.theme || theme || undefined,
+        batchId,
+        batchLabel,
+        kind: 'initial',
+      });
 
       successCount++;
       results.push({ email: candidate.email, status: 'fulfilled' });
@@ -489,6 +502,17 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
         });
 
         await store.remove(candidate.email, rowBatchId || stored.batchId);
+
+        await contacts.recordSend({
+          email: candidate.email,
+          name: merged.name,
+          companyName: merged.companyName,
+          subject,
+          theme: candidate.theme || theme || undefined,
+          batchId: rowBatchId || stored.batchId,
+          batchLabel: stored.batchLabel,
+          kind: 'followup',
+        });
 
         successCount++;
         results.push({ email: candidate.email, status: 'fulfilled' });

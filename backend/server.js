@@ -7,6 +7,7 @@ import uploadRoutes from './routes/uploadCSV.js';
 import emailRoutes from './routes/sendEmails.js';
 import galleryRoutes from './routes/gallery.js';
 import draftRoutes from './routes/drafts.js';
+import contactRoutes from './routes/contacts.js';
 import { UPLOAD_DIR } from './routes/uploadCSV.js';
 
 dotenv.config();
@@ -31,6 +32,9 @@ app.use('/api', emailRoutes);
 app.use('/api', galleryRoutes);
 // Saved batches ("send later" = save now, send when you press Send)
 app.use('/api', draftRoutes);
+
+// Contact history + pre-send CSV validation
+app.use('/api', contactRoutes);
 
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.originalUrl}` }));
 

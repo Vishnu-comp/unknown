@@ -96,6 +96,28 @@ curl -X POST localhost:3000/api/preview -H 'content-type: application/json' \
        "emailTemplate":"<p>Hi [user name]</p>","theme":"branded"}'
 ```
 
+### Pre-send check and contact history
+
+Parsing a CSV runs a read-only validation pass before anything is sent:
+
+- **Invalid addresses** are rejected outright and can never be sent.
+- **Duplicates** inside the file are flagged (case-insensitively).
+- **Anyone already emailed** is flagged with how long ago and how many times.
+- Missing name / company are flagged as warnings.
+
+Flagged rows are pre-ticked to skip; untick to send anyway. `contactStore.json`
+is a permanent log of every send (initial and follow-up) and is never pruned,
+which is what makes the "already emailed 3 days ago" warning possible.
+
+```
+POST   /api/validate         annotate rows; sends nothing, writes nothing
+GET    /api/contacts?search= everyone ever emailed + totals
+GET    /api/contacts/:email  one contact with full send history
+DELETE /api/contacts/:email  forget someone (stops them being flagged)
+```
+
+The "recently contacted" window defaults to 30 days (`RECENT_CONTACT_DAYS`).
+
 ### Send now or save for later
 
 After parsing a CSV you can **Send Now**, or **Save for Later** to park the batch
@@ -193,6 +215,8 @@ See `backend/sample-candidates.csv`.
 | `BRAND_CTA_TEXT` / `BRAND_CTA_URL` | Portfolio link | Button in branded theme |
 | `MESSAGE_STORE_PATH` | `./messageStore.json` | Follow-up state file |
 | `DRAFT_STORE_PATH` | `./draftStore.json` | Saved batches file |
+| `CONTACT_STORE_PATH` | `./contactStore.json` | Permanent contact/send log |
+| `RECENT_CONTACT_DAYS` | `30` | Window for the "already emailed" warning |
 
 ## Notes on the rewrite
 

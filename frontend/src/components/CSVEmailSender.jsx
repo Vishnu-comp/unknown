@@ -24,6 +24,8 @@ const CSVEmailSender = () => {
   // Identity of the CSV currently loaded — sends are filed under this batch.
   const [batchInfo, setBatchInfo] = useState(null);
   const [drafts, setDrafts] = useState([]);
+  const [validation, setValidation] = useState(null);
+  const [skipped, setSkipped] = useState([]);
   const [error, setError] = useState('');
 
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
@@ -102,7 +104,9 @@ const CSVEmailSender = () => {
         skipEmptyLines: true,
         complete: (result) => {
           const rows = result.data
-            .filter((row) => row.email && row.name)
+            // Keep rows with only an email: validation flags the missing name
+            // rather than silently dropping the row.
+            .filter((row) => row.email || row.name)
             .map((row) => ({
               ...row,
               // Per-row overrides win; empty means "use the shared template".
@@ -111,6 +115,9 @@ const CSVEmailSender = () => {
             }));
           setCsvData(rows);
           setExpanded(null);
+          setSkipped([]);
+          setValidation(null);
+          if (rows.length) validateRows(rows);
           // Every upload becomes its own follow-up batch.
           setBatchInfo({
             id: `b_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
@@ -118,7 +125,7 @@ const CSVEmailSender = () => {
           });
           if (!rows.length) {
             setBatchPreviews([]);
-            setError('No rows with both "name" and "email" were found.');
+            setError('No usable rows found - the CSV needs an "email" column.');
           }
         },
       });
@@ -135,18 +142,24 @@ const CSVEmailSender = () => {
       setError('No candidates to send emails to.');
       return;
     }
+    // activeRows drops invalid rows and anything ticked as skipped.
+    const queue = activeRows;
+    if (!queue.length) {
+      setError('Every row is skipped or invalid - nothing to send.');
+      return;
+    }
 
     setSending(true);
-    setProgress({ current: 0, total: csvData.length, status: 'Starting...' });
+    setProgress({ current: 0, total: queue.length, status: 'Starting...' });
 
     let failures = 0;
     try {
-      for (let i = 0; i < csvData.length; i++) {
-        const candidate = csvData[i];
+      for (let i = 0; i < queue.length; i++) {
+        const candidate = queue[i];
         setProgress({
           current: i,
-          total: csvData.length,
-          status: `Sending to ${candidate.name} (${candidate.email})`,
+          total: queue.length,
+          status: `Sending to ${candidate.name || candidate.email} (${candidate.email})`,
         });
 
         const res = await api.post('/sendCustomEmails', {
@@ -160,15 +173,16 @@ const CSVEmailSender = () => {
         });
         failures += res.data.failCount || 0;
 
-        if (i < csvData.length - 1) await sleep(GAP_MS);
+        if (i < queue.length - 1) await sleep(GAP_MS);
       }
 
       setProgress({
-        current: csvData.length,
-        total: csvData.length,
+        current: queue.length,
+        total: queue.length,
         status: failures ? `Done with ${failures} failure(s).` : 'All emails sent.',
       });
       await fetchFollowUps();
+      if (csvData.length) validateRows(csvData);
     } catch (err) {
       console.error('Send failed:', err);
       setError(err.response?.data?.message || 'Sending failed. Check the console.');
@@ -299,6 +313,32 @@ const CSVEmailSender = () => {
     }
   };
 
+  const validateRows = async (rows) => {
+    try {
+      const { data } = await api.post('/validate', { candidates: rows });
+      setValidation(data);
+      // Pre-tick anything unsendable or already contacted recently.
+      const auto = data.rows
+        .filter((r) => !r.sendable || r.duplicate || (r.contacted && r.contacted.daysAgo <= data.summary.recentDays))
+        .map((r) => r.index);
+      setSkipped(auto);
+    } catch (err) {
+      console.error('Validation failed:', err);
+    }
+  };
+
+  const toggleSkip = (index) =>
+    setSkipped((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+
+  // Rows that will actually be sent: never include invalid ones.
+  const activeRows = csvData.filter((row, i) => {
+    const v = validation?.rows?.[i];
+    if (v && !v.sendable) return false;
+    return !skipped.includes(i);
+  });
+
   const saveForLater = async () => {
     setError('');
     if (!csvData.length) {
@@ -308,7 +348,7 @@ const CSVEmailSender = () => {
 
     try {
       await api.post('/drafts', {
-        candidates: csvData,
+        candidates: activeRows,
         emailSubject: subject,
         emailTemplate: template,
         theme,
@@ -410,6 +450,97 @@ const CSVEmailSender = () => {
           {csvData.length > 0 && <span className="hint">{csvData.length} candidate(s) loaded</span>}
         </div>
       </div>
+
+      {validation && (
+        <div className="card">
+          <h2>
+            Pre-send check
+            <span className="vcount">
+              {activeRows.length} of {validation.summary.total} will be sent
+            </span>
+          </h2>
+
+          <div className="vsummary">
+            {validation.summary.invalid > 0 && (
+              <span className="vpill v-err">{validation.summary.invalid} invalid</span>
+            )}
+            {validation.summary.duplicates > 0 && (
+              <span className="vpill v-warn">{validation.summary.duplicates} duplicate</span>
+            )}
+            {validation.summary.alreadyContacted > 0 && (
+              <span className="vpill v-warn">
+                {validation.summary.alreadyContacted} already contacted
+              </span>
+            )}
+            {validation.summary.invalid === 0 &&
+              validation.summary.duplicates === 0 &&
+              validation.summary.alreadyContacted === 0 && (
+                <span className="vpill v-ok">Nothing to flag</span>
+              )}
+          </div>
+
+          {(validation.summary.invalid > 0 ||
+            validation.summary.duplicates > 0 ||
+            validation.summary.alreadyContacted > 0 ||
+            validation.summary.missingFields > 0) && (
+            <>
+              <p className="hint">
+                Flagged rows are pre-ticked to skip. Untick to send anyway. Invalid addresses can
+                never be sent.
+              </p>
+              <div className="vlist">
+                {validation.rows
+                  .filter((r) => r.errors.length || r.warnings.length)
+                  .map((r) => (
+                    <label
+                      key={r.index}
+                      className={`vrow ${!r.sendable ? 'v-dead' : ''}`}
+                      title={!r.sendable ? 'Invalid address - cannot be sent' : ''}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!r.sendable || skipped.includes(r.index)}
+                        disabled={!r.sendable}
+                        onChange={() => toggleSkip(r.index)}
+                      />
+                      <span className="vmain">
+                        <b>{r.email || '(no email)'}</b>
+                        {r.name ? <span className="hint"> &middot; {r.name}</span> : null}
+                        <span className="vmsgs">
+                          {r.errors.map((m, k) => (
+                            <span key={`e${k}`} className="vmsg v-err">
+                              {m}
+                            </span>
+                          ))}
+                          {r.warnings.map((m, k) => (
+                            <span key={`w${k}`} className="vmsg v-warn">
+                              {m}
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              <div className="row">
+                <button
+                  className="ghost small"
+                  onClick={() =>
+                    setSkipped(
+                      validation.rows.filter((r) => r.errors.length || r.warnings.length).map((r) => r.index)
+                    )
+                  }
+                >
+                  Skip all flagged
+                </button>
+                <button className="ghost small" onClick={() => setSkipped([])}>
+                  Send everything valid
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h2>Initial email</h2>
@@ -541,10 +672,10 @@ const CSVEmailSender = () => {
       )}
 
       <div className="row">
-        <button className="secondary" onClick={sendEmails} disabled={sending || !csvData.length}>
-          {sending ? 'Sending...' : `Send Now (${csvData.length})`}
+        <button className="secondary" onClick={sendEmails} disabled={sending || !activeRows.length}>
+          {sending ? 'Sending...' : `Send Now (${activeRows.length})`}
         </button>
-        <button onClick={saveForLater} disabled={sending || !csvData.length}>
+        <button onClick={saveForLater} disabled={sending || !activeRows.length}>
           Save for Later
         </button>
         <button

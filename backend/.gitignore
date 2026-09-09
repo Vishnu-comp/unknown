@@ -5,3 +5,4 @@ messageStore.json
 assets/*.pdf
 draftStore.json
 sink.test.mjs
+contactStore.json

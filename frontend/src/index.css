@@ -269,3 +269,53 @@ button.danger:hover { background: #fef2f2; }
 .j-cancelled { color: #9ca3af; }
 .hint.small { font-size: 11px; margin-top: 2px; }
 button.secondary.small { padding: 5px 12px; font-size: 12px; }
+
+/* ── Pre-send validation ─────────────────────────────────────────────────── */
+.vcount {
+  float: right;
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7280;
+}
+.vsummary { margin-bottom: 10px; }
+.vpill {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.v-err  { background: #fee2e2; color: #b91c1c; }
+.v-warn { background: #fef3c7; color: #92400e; }
+.v-ok   { background: #dcfce7; color: #166534; }
+.vlist {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+.vrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  font-size: 13px;
+}
+.vrow:last-child { border-bottom: none; }
+.vrow:hover { background: #f9fafb; }
+.vrow.v-dead { opacity: 0.65; cursor: not-allowed; }
+.vmain { flex: 1; min-width: 0; }
+.vmsgs { display: block; margin-top: 3px; }
+.vmsg {
+  display: inline-block;
+  margin: 2px 5px 0 0;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.vmsg.v-err  { background: #fee2e2; color: #b91c1c; }
+.vmsg.v-warn { background: #fef3c7; color: #92400e; }
