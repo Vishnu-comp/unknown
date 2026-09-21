@@ -10,9 +10,10 @@
 // A contact:
 //   { email, name, companyName,
 //     firstContactedAt, lastContactedAt, sendCount,
-//     history: [ { at, subject, theme, batchId, batchLabel, kind } ] }
+//     history: [ { at, subject, theme, batchId, batchLabel, kind, followUpStage } ] }
 //
-// `kind` is 'initial' or 'followup'.
+// `kind` is 'initial', 'followup' (first nudge) or 'followup2' and up for the
+// later steps of the chain; `followUpStage` carries the step number.
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -60,6 +61,7 @@ export async function recordSend({
   batchId,
   batchLabel,
   kind = 'initial',
+  followUpStage,
 }) {
   const key = normalizeEmail(email);
   if (!key) return;
@@ -69,7 +71,15 @@ export async function recordSend({
     const now = new Date().toISOString();
     const existing = data.contacts[key];
 
-    const entry = { at: now, subject, theme, batchId, batchLabel, kind };
+    const entry = {
+      at: now,
+      subject,
+      theme,
+      batchId,
+      batchLabel,
+      kind,
+      ...(followUpStage ? { followUpStage } : {}),
+    };
 
     if (existing) {
       existing.name = name || existing.name;

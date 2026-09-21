@@ -1,4 +1,8 @@
-// Default copy for the outreach + follow-up emails.
+// Default copy for the outreach email.
+//
+// The follow-up steps have their copy on the server (backend/utils/followUps.js,
+// served by GET /api/followups/templates) because both the UI editor and the
+// send route need identical defaults for each step of the chain.
 //
 // Placeholders ([user name], [company name], [job description], [job id]) are
 // substituted on the server per candidate, so the text you edit in the UI is
@@ -6,9 +10,6 @@
 
 export const DEFAULT_SUBJECT =
   '[job description] Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]';
-
-export const DEFAULT_FOLLOWUP_SUBJECT =
-  'Following Up: [job description] Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]';
 
 export const DEFAULT_TEMPLATE = `<p>Hi [user name],</p>
 
@@ -41,11 +42,3 @@ export const DEFAULT_TEMPLATE = `<p>Hi [user name],</p>
 <p><a href="https://vishnunairportfolio.vercel.app/" target="_blank" rel="noreferrer">Portfolio</a><br/>
 <a href="https://github.com/Vishnu-comp" target="_blank" rel="noreferrer">GitHub</a><br/>
 <a href="https://linkedin.com/in/vishnu-nair-tech" target="_blank" rel="noreferrer">LinkedIn</a></p>`;
-
-export const DEFAULT_FOLLOWUP_TEMPLATE = `<p>Hi [user name],</p>
-
-<p>I wanted to follow up on my previous email about the <b>[job description]</b> opportunity at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id]. I'm still very interested in the role and would appreciate any updates or next steps.</p>
-
-<p>Looking forward to your response.</p>
-
-<p>Best regards,<br/><b>Vishnu Nair</b></p>`;

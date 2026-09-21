@@ -1,13 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import axios from 'axios';
 
-import {
-  DEFAULT_SUBJECT,
-  DEFAULT_TEMPLATE,
-  DEFAULT_FOLLOWUP_SUBJECT,
-  DEFAULT_FOLLOWUP_TEMPLATE,
-} from '../emailTemplates.js';
+import { DEFAULT_SUBJECT, DEFAULT_TEMPLATE } from '../emailTemplates.js';
 
 // Relative base URL — Vite proxies /api to the backend, so this works in dev,
 // in a hosted preview and in production without code changes.
@@ -30,8 +25,15 @@ const CSVEmailSender = () => {
 
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
-  const [followUpSubject, setFollowUpSubject] = useState(DEFAULT_FOLLOWUP_SUBJECT);
-  const [followUpTemplate, setFollowUpTemplate] = useState(DEFAULT_FOLLOWUP_TEMPLATE);
+
+  // One editable block per follow-up step. The copy is fetched from
+  // /api/followups/templates so the send route can fall back to the exact same
+  // defaults; clearing a field means "use the built-in copy for this step".
+  const [followUpStages, setFollowUpStages] = useState([]);
+  const [stagePlan, setStagePlan] = useState([]);
+  // Pristine server copy per step, so previewing a blanked field still shows
+  // exactly what the server would send.
+  const stageDefaults = useRef({});
 
   const [theme, setTheme] = useState('plain');
   const [themeList, setThemeList] = useState([]);
@@ -53,12 +55,43 @@ const CSVEmailSender = () => {
       const res = await api.get('/followups');
       setFollowUps(res.data.candidates || []);
       setBatches(res.data.batches || []);
+      setStagePlan(res.data.stages || []);
     } catch (err) {
       console.error('Failed to fetch follow-ups:', err);
       setFollowUps([]);
       setBatches([]);
+      setStagePlan([]);
     }
   }, []);
+
+  // Default copy for each follow-up step, plus how many steps the server is
+  // configured for (MAX_FOLLOW_UPS).
+  useEffect(() => {
+    api
+      .get('/followups/templates')
+      .then(({ data }) => {
+        const stages = data.stages || [];
+        stageDefaults.current = Object.fromEntries(
+          stages.map((s) => [s.stage, { subject: s.subject, template: s.template }])
+        );
+        setFollowUpStages(stages);
+      })
+      .catch((err) => console.error('Failed to load follow-up templates:', err));
+  }, []);
+
+  const stageLabel = (stage) =>
+    followUpStages.find((s) => s.stage === stage)?.label ||
+    stagePlan.find((s) => s.stage === stage)?.label ||
+    `Follow-up ${stage}`;
+
+  const copyForStage = (stage) => followUpStages.find((s) => s.stage === stage) || {};
+
+  const updateFollowUpCopy = (stage, field, value) =>
+    setFollowUpStages((prev) =>
+      prev.map((s) => (s.stage === stage ? { ...s, [field]: value } : s))
+    );
+
+  const waitingFor = (stage) => followUps.filter((c) => c.nextFollowUp === stage).length;
 
   useEffect(() => {
     fetchFollowUps();
@@ -193,48 +226,132 @@ const CSVEmailSender = () => {
   };
 
   // ─── Send follow-ups ──────────────────────────────────────────────────────
-  const sendFollowUpEmails = async (targetBatch) => {
+  //
+  // One step at a time: `stage` is which follow-up to send (1 = first nudge,
+  // 2 = final note). The server refuses to send the wrong step, so a group
+  // can only ever receive the follow-up it is actually waiting for.
+  const runFollowUps = async (
+    pending,
+    stage,
+    { targetBatch, done = 0, total = pending.length, tally = { sent: 0, failures: 0, skipped: 0 } } = {}
+  ) => {
+    const copy = copyForStage(stage);
+
+    for (let i = 0; i < pending.length; i++) {
+      const candidate = pending[i];
+      setProgress({
+        current: done + i,
+        total,
+        status: `${stageLabel(stage)} to ${candidate.name || candidate.email}`,
+      });
+
+      const res = await api.post('/sendFollowUpEmails', {
+        candidates: [candidate],
+        // Blank copy is fine: the server uses the built-in copy for that step.
+        emailSubject: copy.subject || '',
+        emailTemplate: copy.template || '',
+        theme,
+        batchId: candidate.batchId || targetBatch?.id,
+        stage,
+      });
+
+      tally.sent += res.data.successCount || 0;
+      tally.failures += res.data.failCount || 0;
+      tally.skipped += res.data.skippedCount || 0;
+
+      if (i < pending.length - 1) await sleep(GAP_MS);
+    }
+
+    return tally;
+  };
+
+  const summarize = ({ sent, failures, skipped }, total) =>
+    [
+      `${sent}/${total} sent`,
+      failures ? `${failures} failed` : null,
+      skipped ? `${skipped} skipped` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+  const sendFollowUpEmails = async (targetBatch, stage) => {
     setError('');
     setSending(true);
-    setProgress({ current: 0, total: 0, status: 'Fetching follow-up data...' });
+    setProgress({ current: 0, total: 0, status: `Collecting who is waiting for ${stageLabel(stage)}...` });
 
     try {
       const { data } = await api.get('/followups', {
-        params: targetBatch ? { batchId: targetBatch.id } : {},
+        params: { ...(targetBatch ? { batchId: targetBatch.id } : {}), stage },
       });
       const pending = data.candidates || [];
 
       if (!pending.length) {
-        setError('No candidates available for follow-up.');
+        setError(`Nobody is waiting for ${stageLabel(stage)}.`);
         setProgress({ current: 0, total: 0, status: '' });
         return;
       }
 
-      let failures = 0;
-      for (let i = 0; i < pending.length; i++) {
-        const candidate = pending[i];
-        setProgress({
-          current: i,
-          total: pending.length,
-          status: `Sending follow-up to ${candidate.name || candidate.email}`,
-        });
-
-        const res = await api.post('/sendFollowUpEmails', {
-          candidates: [candidate],
-          emailSubject: followUpSubject,
-          emailTemplate: followUpTemplate,
-          theme,
-          batchId: candidate.batchId || targetBatch?.id,
-        });
-        failures += res.data.failCount || 0;
-
-        if (i < pending.length - 1) await sleep(GAP_MS);
-      }
+      const tally = await runFollowUps(pending, stage, {
+        targetBatch,
+        total: pending.length,
+      });
 
       setProgress({
         current: pending.length,
         total: pending.length,
-        status: failures ? `Done with ${failures} failure(s).` : 'All follow-up emails sent.',
+        status: `${stageLabel(stage)}: ${summarize(tally, pending.length)}`,
+      });
+      await fetchFollowUps();
+    } catch (err) {
+      console.error('Follow-up failed:', err);
+      setError(err.response?.data?.message || 'Follow-up failed. Check the console.');
+      setProgress((p) => ({ ...p, status: 'Follow-up failed.' }));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  /**
+   * Send everything pending, oldest step first. The queue is snapshotted before
+   * the first send so somebody who just received follow-up 1 is not chased with
+   * follow-up 2 in the same run.
+   */
+  const sendAllFollowUps = async () => {
+    setError('');
+    if (!followUps.length) {
+      setError('Nothing is waiting for a follow-up.');
+      return;
+    }
+
+    const snapshot = followUps.map((c) => ({ ...c }));
+    const stages = [...new Set(snapshot.map((c) => c.nextFollowUp))]
+      .filter((s) => Number.isFinite(s) && s > 0)
+      .sort((a, b) => a - b);
+
+    setSending(true);
+    const tally = { sent: 0, failures: 0, skipped: 0 };
+    let done = 0;
+
+    setProgress({ current: 0, total: snapshot.length, status: 'Sending pending follow-ups...' });
+
+    try {
+      for (const stage of stages) {
+        const group = snapshot.filter((c) => c.nextFollowUp === stage);
+        if (!group.length) continue;
+
+        await runFollowUps(group, stage, { done, total: snapshot.length, tally });
+        done += group.length;
+        setProgress({
+          current: done,
+          total: snapshot.length,
+          status: `${stageLabel(stage)} done - ${summarize(tally, done)}`,
+        });
+      }
+
+      setProgress({
+        current: snapshot.length,
+        total: snapshot.length,
+        status: `All pending follow-ups: ${summarize(tally, snapshot.length)}`,
       });
       await fetchFollowUps();
     } catch (err) {
@@ -286,7 +403,8 @@ const CSVEmailSender = () => {
   }, [theme, subject, template, csvData]);
 
   // ─── Dry run: render without sending ──────────────────────────────────────
-  const showPreview = async (candidate) => {
+  // Pass `copy` to preview a follow-up step instead of the initial email.
+  const showPreview = async (candidate, copy) => {
     setError('');
     setPreviewing(true);
     try {
@@ -300,11 +418,11 @@ const CSVEmailSender = () => {
 
       const { data } = await api.post('/preview', {
         candidate: sample,
-        emailSubject: sample.emailSubject || subject,
-        emailTemplate: sample.emailTemplate || template,
+        emailSubject: copy?.subject || sample.emailSubject || subject,
+        emailTemplate: copy?.template || sample.emailTemplate || template,
         theme,
       });
-      setPreview({ ...data, to: sample.email || '(sample)' });
+      setPreview({ ...data, to: sample.email || '(sample)', step: copy?.step || null });
     } catch (err) {
       console.error('Preview failed:', err);
       setError(err.response?.data?.message || 'Preview failed.');
@@ -556,27 +674,68 @@ const CSVEmailSender = () => {
       </div>
 
       <div className="card">
-        <h2>Follow-up email</h2>
+        <h2>Follow-up emails</h2>
         <p className="hint">
-          Sent as a reply in the original Gmail thread. The subject stored from the original mail is
-          reused for threading; this field is only a fallback.
+          Follow-ups reply inside the original Gmail thread, one step at a time: everyone gets{' '}
+          <b>Follow-up 1</b>, and <b>Follow-up 2</b> only goes to the people still silent after
+          that. Once the last step is sent the contact leaves the queue, so nobody is chased for
+          ever. The subject stored from the original mail is reused for threading; these subjects
+          are only fallbacks.
         </p>
-        <label htmlFor="fsubject">Subject (fallback)</label>
-        <textarea
-          id="fsubject"
-          className="followup"
-          rows={2}
-          value={followUpSubject}
-          onChange={(e) => setFollowUpSubject(e.target.value)}
-        />
-        <label htmlFor="ftemplate">Body (HTML)</label>
-        <textarea
-          id="ftemplate"
-          className="followup"
-          rows={6}
-          value={followUpTemplate}
-          onChange={(e) => setFollowUpTemplate(e.target.value)}
-        />
+        <p className="hint">
+          Copy is loaded from the server (<code>GET /api/followups/templates</code>). Leave a field
+          blank to send the built-in copy for that step.
+        </p>
+
+        {followUpStages.map((s) => (
+          <div key={s.stage} className={`fu-block ${s.final ? 'fu-final' : ''}`}>
+            <div className="fu-head">
+              <b>{s.label}</b>
+              <span className={`stage-badge ${s.final ? 's-final' : ''}`}>
+                {s.final ? 'last step' : 'next step'}
+              </span>
+              <span className="hint"> {waitingFor(s.stage)} waiting</span>
+            </div>
+            <p className="hint">{s.blurb}</p>
+
+            <label htmlFor={`fsubject-${s.stage}`}>Subject (fallback)</label>
+            <textarea
+              id={`fsubject-${s.stage}`}
+              className="followup"
+              rows={2}
+              value={s.subject}
+              onChange={(e) => updateFollowUpCopy(s.stage, 'subject', e.target.value)}
+            />
+            <label htmlFor={`ftemplate-${s.stage}`}>Body (HTML)</label>
+            <textarea
+              id={`ftemplate-${s.stage}`}
+              className="followup"
+              rows={6}
+              value={s.template}
+              onChange={(e) => updateFollowUpCopy(s.stage, 'template', e.target.value)}
+            />
+            <div className="row">
+              <button
+                className="ghost small"
+                onClick={() => {
+                  const fallback = stageDefaults.current[s.stage] || {};
+                  showPreview(null, {
+                    subject: s.subject || fallback.subject,
+                    template: s.template || fallback.template,
+                    step: s.label,
+                  });
+                }}
+                disabled={previewing}
+              >
+                {previewing ? 'Rendering...' : `Preview ${s.label}`}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {!followUpStages.length && (
+          <p className="hint">Loading the default follow-up copy from the server...</p>
+        )}
       </div>
 
       <div className="card">
@@ -617,7 +776,10 @@ const CSVEmailSender = () => {
 
       {preview && (
         <div className="card">
-          <h2>Preview — {preview.theme}</h2>
+          <h2>
+            Preview — {preview.theme}
+            {preview.step && <> &nbsp;·&nbsp; {preview.step}</>}
+          </h2>
           <p className="hint">
             To: {preview.to} &nbsp;·&nbsp; Subject: <b>{preview.subject}</b>
             {preview.attachment && <> &nbsp;·&nbsp; Attachment: {preview.attachment}</>}
@@ -680,13 +842,23 @@ const CSVEmailSender = () => {
         </button>
         <button
           className="tertiary"
-          onClick={() => sendFollowUpEmails()}
+          onClick={sendAllFollowUps}
           disabled={sending || followUps.length === 0}
-          title="Follow up with every pending batch"
+          title="Work through every pending batch, oldest step first"
         >
           {sending ? 'Working...' : `Send All Follow-Ups (${followUps.length})`}
         </button>
       </div>
+
+      {followUps.length > 0 && stagePlan.some((s) => s.waiting > 0) && (
+        <p className="hint">
+          Queue:{' '}
+          {stagePlan
+            .filter((s) => s.waiting > 0)
+            .map((s) => `${s.waiting} waiting for ${s.label}`)
+            .join(' · ')}
+        </p>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -815,12 +987,17 @@ const CSVEmailSender = () => {
           <h2>Pending follow-ups by upload ({followUps.length})</h2>
           <p className="hint">
             Each CSV upload is its own batch, so you can follow up one file at a time instead of
-            everyone at once. Sent follow-ups leave the batch automatically.
+            everyone at once. Every batch shows which step its people are on — follow-up 2 only goes
+            to those still waiting after follow-up 1. Sent follow-ups leave the batch automatically.
           </p>
 
           {batches.map((b) => {
             const rows = followUps.filter((c) => c.batchId === b.id);
             const open = openBatch === b.id;
+            const pendingByStage = b.pendingByStage || {};
+            const stagesHere = Object.keys(pendingByStage)
+              .map(Number)
+              .sort((a, z) => a - z);
 
             return (
               <div key={b.id} className="batch">
@@ -829,7 +1006,11 @@ const CSVEmailSender = () => {
                     <b>{b.label}</b>
                     <span className="hint">
                       {' '}
-                      · {b.count} pending · {new Date(b.createdAt).toLocaleString()}
+                      · {b.count} pending
+                      {stagesHere
+                        .map((s) => ` · ${pendingByStage[s]} waiting for ${stageLabel(s)}`)
+                        .join('')}{' '}
+                      · {new Date(b.createdAt).toLocaleString()}
                     </span>
                   </div>
                   <div className="batch-actions">
@@ -839,13 +1020,16 @@ const CSVEmailSender = () => {
                     >
                       {open ? 'Hide' : 'Show'}
                     </button>
-                    <button
-                      className="tertiary small"
-                      onClick={() => sendFollowUpEmails(b)}
-                      disabled={sending}
-                    >
-                      Follow up ({b.count})
-                    </button>
+                    {stagesHere.map((s) => (
+                      <button
+                        key={s}
+                        className="tertiary small"
+                        onClick={() => sendFollowUpEmails(b, s)}
+                        disabled={sending}
+                      >
+                        {stageLabel(s)} ({pendingByStage[s]})
+                      </button>
+                    ))}
                     <button
                       className="ghost small danger"
                       onClick={() => discardBatch(b)}
@@ -864,8 +1048,24 @@ const CSVEmailSender = () => {
                         <p className="meta">
                           <b>{c.name || c.email}</b> — {c.email}
                           {c.companyName ? ` — ${c.companyName}` : ''}
+                          <span className={`stage-badge ${c.nextFollowUp > 1 ? 's-2' : ''}`}>
+                            waiting for {stageLabel(c.nextFollowUp)}
+                          </span>
                         </p>
                         <p className="subject">Original subject: {c.subject}</p>
+                        {c.followUps?.length > 0 && (
+                          <p className="hint small">
+                            Sent:{' '}
+                            {c.followUps
+                              .map(
+                                (f) =>
+                                  `${stageLabel(f.stage)} on ${new Date(
+                                    f.sentAt
+                                  ).toLocaleDateString()}`
+                              )
+                              .join(' · ')}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
