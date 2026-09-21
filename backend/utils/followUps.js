@@ -34,9 +34,11 @@ const CLOSING_SUBJECT =
 
 const CLOSING_TEMPLATE = `<p>Hi [user name],</p>
 
-<p>I hope you don't mind me reaching out again about the <b>[job description]</b> role at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id].</p>
+<p>I'm really sorry to trouble you again about the <b>[job description]</b> role at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id].</p>
 
-<p>I'd still be glad to be considered, and I'm happy to share anything else that would help. Thank you for your time.</p>
+<p>I know how busy you must be, and I don't want to keep cluttering your inbox. I'm still very interested in the role, and if you have a moment, any guidance or update would mean a lot to me.</p>
+
+<p>Thank you so much for your time, and sorry again for the follow-up.</p>
 
 <p>Best regards,<br/><b>Vishnu Nair</b></p>`;
 
@@ -48,7 +50,7 @@ const DEFAULT_COPY = {
 /** Descriptions used in the UI / API docs. */
 const STAGE_BLURB = {
   1: 'Nudge that replies in the original thread.',
-  2: 'A short, polite final note - nothing new, no pressure.',
+  2: 'A short, apologetic final note - thanks them for their time, no pressure.',
 };
 
 export function isStage(value) {

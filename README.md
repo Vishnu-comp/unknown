@@ -4,7 +4,7 @@ Bulk cold-outreach mailer with **threaded, multi-step follow-ups**.
 
 Upload a CSV of contacts, review/edit the copy, send personalized emails through
 Gmail one at a time, and later reply in the *same Gmail thread* — first a nudge,
-then a short final note.
+then a short, apologetic final note.
 
 ```
 backend/    Express + Nodemailer API
@@ -19,8 +19,8 @@ frontend/   React (Vite) UI
 3. `GET /api/followups` lists everyone still awaiting a reply, tagged with the step
    they are on (follow-up 1 or 2).
 4. `POST /api/sendFollowUpEmails` replies with `inReplyTo` + `references` so Gmail threads it:
-   follow-up 1 nudges, follow-up 2 is a short final note, and the entry is removed once the
-   last step has gone out — so nobody is chased twice.
+   follow-up 1 nudges, follow-up 2 is a short apologetic note that thanks them for their time,
+   and the entry is removed once the last step has gone out — so nobody is chased twice.
 
 Placeholders substituted per candidate: `[user name]`, `[company name]`,
 `[job description]`, `[job id]`.
