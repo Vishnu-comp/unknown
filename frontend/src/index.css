@@ -319,3 +319,31 @@ button.secondary.small { padding: 5px 12px; font-size: 12px; }
 }
 .vmsg.v-err  { background: #fee2e2; color: #b91c1c; }
 .vmsg.v-warn { background: #fef3c7; color: #92400e; }
+
+/* ── Follow-up chain (one block + badge per step) ─────────────── */
+.fu-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  background: #fafafa;
+}
+.fu-block.fu-final { background: #fff; border-style: dashed; }
+.fu-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fu-head b { font-size: 14px; }
+.stage-badge {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  background: #f0f9ff;
+  border-radius: 99px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}
+.stage-badge.s-2 { color: #7c3aed; border-color: #c4b5fd; background: #f5f3ff; }
+.stage-badge.s-final { color: #92400e; border-color: #fcd34d; background: #fffbeb; }
+.candidate .stage-badge { margin-left: 8px; }

@@ -17,6 +17,14 @@ import {
 } from '../utils/template.js';
 import { renderEmail, THEMES, DEFAULT_THEME, THEME_META } from '../utils/themes.js';
 import { getBranding } from '../utils/branding.js';
+import {
+  MAX_FOLLOW_UPS,
+  isStage,
+  stageLabel,
+  nextFollowUp,
+  copyFor,
+  listStages,
+} from '../utils/followUps.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +33,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEND_DELAY_MS = Number(process.env.SEND_DELAY_MS || 15000);
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets');
+
+/**
+ * Contact-log `kind` for a follow-up step: 'followup' for the first nudge,
+ * 'followup2' (and up) for the later steps, so the history reads clearly.
+ */
+function followUpKind(stage) {
+  return Number(stage) <= 1 ? 'followup' : `followup${Number(stage)}`;
+}
 
 /**
  * Resolve the resume to attach.
@@ -404,13 +420,46 @@ router.get('/attachment', (req, res) => {
   });
 });
 
-/** GET /api/followups — candidates awaiting a follow-up. */
+/**
+ * GET /api/followups/templates — the built-in copy for every follow-up step,
+ * so the UI and the send route share one source of truth.
+ */
+router.get('/followups/templates', (req, res) => {
+  res.json({ maxFollowUps: MAX_FOLLOW_UPS, stages: listStages() });
+});
+
+/**
+ * GET /api/followups?batchId=&stage= — who is awaiting a follow-up.
+ *
+ * `stage` filters to one step of the chain (people waiting for follow-up 2,
+ * say). Every candidate carries stage/nextFollowUp, so callers can group the
+ * list themselves; `stages` gives the counts per step.
+ */
 router.get('/followups', async (req, res, next) => {
   try {
-    const { batchId } = req.query;
+    const { batchId, stage } = req.query;
+
+    if (stage !== undefined && stage !== '' && !isStage(stage)) {
+      return res
+        .status(400)
+        .json({ message: `stage must be between 1 and ${MAX_FOLLOW_UPS}` });
+    }
+
+    const wanted = stage === undefined || stage === '' ? null : Number(stage);
+    const all = await store.listCandidates(batchId);
+
     res.status(200).json({
+      maxFollowUps: MAX_FOLLOW_UPS,
+      pending: all.length,
+      stages: listStages().map((s) => ({
+        stage: s.stage,
+        label: s.label,
+        blurb: s.blurb,
+        final: s.final,
+        waiting: all.filter((c) => c.nextFollowUp === s.stage).length,
+      })),
       batches: await store.listBatches(),
-      candidates: await store.listCandidates(batchId),
+      candidates: wanted === null ? all : all.filter((c) => c.nextFollowUp === wanted),
     });
   } catch (err) {
     next(err);
@@ -420,7 +469,14 @@ router.get('/followups', async (req, res, next) => {
 /**
  * POST /api/sendFollowUpEmails
  * Replies in the original Gmail thread using inReplyTo/references.
- * Successful follow-ups are removed from the store so nobody is chased twice.
+ *
+ * body: { candidates?, batchId?, stage?, emailSubject?, emailTemplate?, theme? }
+ *
+ * `stage` is which follow-up to send (1 = first nudge, 2 = the closing note).
+ * A candidate can only ever receive the step they are actually waiting for:
+ * people awaiting follow-up 2 are skipped by a stage-1 request rather than
+ * getting the same nudge twice. Once the last step has gone out the entry is
+ * dropped, so nobody is chased past MAX_FOLLOW_UPS.
  */
 router.post('/sendFollowUpEmails', async (req, res, next) => {
   const {
@@ -429,19 +485,29 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
     emailTemplate,
     theme,
     batchId,
+    stage,
   } = req.body || {};
 
-  // Either pass explicit candidates, or just a batchId to follow up that
-  // whole upload without listing everyone client-side.
+  if (stage !== undefined && stage !== null && !isStage(stage)) {
+    return res
+      .status(400)
+      .json({ message: `stage must be between 1 and ${MAX_FOLLOW_UPS}` });
+  }
+  const requestedStage = isStage(stage) ? Number(stage) : undefined;
+
+  // Either pass explicit candidates, or just a batchId (plus optionally a
+  // stage) to work through that upload without listing everyone client-side.
   let candidates = bodyCandidates;
   if ((!Array.isArray(candidates) || candidates.length === 0) && batchId) {
-    candidates = await store.listCandidates(batchId);
+    candidates = await store.listCandidates(batchId, { stage: requestedStage });
   }
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return res
-      .status(400)
-      .json({ message: 'Provide a candidates array or a batchId with pending follow-ups' });
+    return res.status(400).json({
+      message: requestedStage
+        ? `No candidates awaiting follow-up ${requestedStage}`
+        : 'Provide a candidates array or a batchId with pending follow-ups',
+    });
   }
 
   try {
@@ -470,19 +536,49 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
         continue;
       }
 
+      const awaiting = nextFollowUp(stored);
+      const target = requestedStage || awaiting;
+
+      // Never send the wrong step: a follow-up 2 request cannot nudge someone
+      // who is still waiting for follow-up 1, and vice versa.
+      if (target !== awaiting) {
+        skippedCount++;
+        results.push({
+          email: candidate.email,
+          status: 'skipped',
+          stage: target,
+          reason: `Awaiting follow-up ${awaiting}, not follow-up ${target}`,
+        });
+        continue;
+      }
+
       const merged = { ...stored, ...candidate };
-      const rawHtml = candidate.emailTemplate || emailTemplate;
+      // Request copy, then that stage's built-in copy - so a bare
+      // { batchId, stage } request is still sendable.
+      const defaults = copyFor(target);
+      const rawSubject = candidate.emailSubject || emailSubject || defaults.subject;
+      const rawHtml = candidate.emailTemplate || emailTemplate || defaults.template;
 
       if (!rawHtml) {
         skippedCount++;
-        results.push({ email: candidate.email, status: 'skipped', reason: 'No template provided' });
+        results.push({
+          email: candidate.email,
+          status: 'skipped',
+          stage: target,
+          reason: 'No template provided',
+        });
         continue;
       }
+
+      // The conversation so far: reply to the newest message inside it, and
+      // reference every message before it so clients nest the reply correctly.
+      const thread = stored.thread?.length ? stored.thread : [stored.messageId];
+      const parentId = thread[thread.length - 1] || stored.messageId;
 
       try {
         // Threading works best when the subject matches the original.
         const baseSubject =
-          stored.subject || candidate.emailSubject || emailSubject || 'Following up';
+          stored.subject || rawSubject || 'Following up';
         const { subject, html, text } = composeEmail({
           subject: baseSubject,
           template: rawHtml,
@@ -490,36 +586,62 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
           theme: candidate.theme || theme,
         });
 
-        await transporter.sendMail({
+        const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+
+        const info = await transporter.sendMail({
           from: process.env.EMAIL_USERNAME,
           to: candidate.email,
           cc: normalizeCc(candidate.cc || stored.cc),
-          subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
+          subject: replySubject,
           html,
           text,
-          inReplyTo: stored.messageId,
-          references: [stored.messageId],
+          inReplyTo: parentId,
+          references: thread,
         });
 
-        await store.remove(candidate.email, rowBatchId || stored.batchId);
+        const { removed, nextFollowUp: upcoming } = await store.recordFollowUp(
+          candidate.email,
+          rowBatchId || stored.batchId,
+          {
+            messageId: info.messageId,
+            subject: replySubject,
+            stage: target,
+          }
+        );
 
         await contacts.recordSend({
           email: candidate.email,
           name: merged.name,
           companyName: merged.companyName,
-          subject,
+          subject: replySubject,
           theme: candidate.theme || theme || undefined,
           batchId: rowBatchId || stored.batchId,
           batchLabel: stored.batchLabel,
-          kind: 'followup',
+          kind: followUpKind(target),
+          followUpStage: target,
         });
 
         successCount++;
-        results.push({ email: candidate.email, status: 'fulfilled' });
-        console.log(`Follow-up sent to ${candidate.email}`);
+        results.push({
+          email: candidate.email,
+          status: 'fulfilled',
+          stage: target,
+          messageId: info.messageId,
+          // null once the chain is finished - no further chasing.
+          nextFollowUp: removed ? null : upcoming,
+        });
+        console.log(
+          `${stageLabel(target)} sent to ${candidate.email}` +
+            (removed ? ' (chain complete)' : ` (next: follow-up ${upcoming})`)
+        );
       } catch (err) {
         failCount++;
-        results.push({ email: candidate.email, status: 'rejected', reason: err.message });
+        results.push({
+          email: candidate.email,
+          status: 'rejected',
+          stage: target,
+          reason: err.message,
+        });
         console.error(`Follow-up failed for ${candidate.email}: ${err.message}`);
       }
 
@@ -528,8 +650,12 @@ router.post('/sendFollowUpEmails', async (req, res, next) => {
       }
     }
 
+    const label = requestedStage ? stageLabel(requestedStage) : 'Follow-up';
     return res.status(failCount ? 207 : 200).json({
-      message: failCount ? `${failCount} follow-up(s) failed` : 'Follow-up emails sent successfully',
+      message: failCount
+        ? `${label}: ${failCount} email(s) failed`
+        : `${label} emails sent successfully`,
+      stage: requestedStage || null,
       successCount,
       failCount,
       skippedCount,

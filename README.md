@@ -1,9 +1,10 @@
 # CSV Email Sender
 
-Bulk cold-outreach mailer with **threaded follow-ups**.
+Bulk cold-outreach mailer with **threaded, multi-step follow-ups**.
 
 Upload a CSV of contacts, review/edit the copy, send personalized emails through
-Gmail one at a time, and later reply in the *same Gmail thread* with a follow-up.
+Gmail one at a time, and later reply in the *same Gmail thread* — first a nudge,
+then a closing note.
 
 ```
 backend/    Express + Nodemailer API
@@ -15,9 +16,11 @@ frontend/   React (Vite) UI
 1. `POST /api/uploadCSV` stores the CSV; the UI fetches it back and parses it with PapaParse.
 2. `POST /api/sendCustomEmails` sends each mail sequentially (`SEND_DELAY_MS` apart) and
    records the resulting `Message-ID` in `messageStore.json`.
-3. `GET /api/followups` lists everyone with a stored `Message-ID`.
-4. `POST /api/sendFollowUpEmails` replies with `inReplyTo` + `references` so Gmail threads it,
-   then removes the entry so nobody is chased twice.
+3. `GET /api/followups` lists everyone still awaiting a reply, tagged with the step
+   they are on (follow-up 1 or 2).
+4. `POST /api/sendFollowUpEmails` replies with `inReplyTo` + `references` so Gmail threads it:
+   follow-up 1 nudges, follow-up 2 closes the loop, and the entry is removed once the last
+   step has gone out — so nobody is chased twice.
 
 Placeholders substituted per candidate: `[user name]`, `[company name]`,
 `[job description]`, `[job id]`.
@@ -116,7 +119,9 @@ GET    /api/contacts/:email  one contact with full send history
 DELETE /api/contacts/:email  forget someone (stops them being flagged)
 ```
 
-The "recently contacted" window defaults to 30 days (`RECENT_CONTACT_DAYS`).
+The "recently contacted" window defaults to 30 days (`RECENT_CONTACT_DAYS`). Each
+history entry is tagged with what it was — `initial`, `followup` or `followup2`
+(plus the step number in `followUpStage`).
 
 ### Send now or save for later
 
@@ -142,15 +147,56 @@ the first. You can follow up one file at a time instead of mailing everyone at
 once, and each batch can be discarded without sending.
 
 ```
-GET    /api/followups                 all pending, each row tagged with its batch
+GET    /api/followups                 all pending, each row tagged with its batch and step
 GET    /api/followups?batchId=...     just that upload
-GET    /api/followups/batches         batch summaries (label, count, createdAt)
-POST   /api/sendFollowUpEmails        { batchId } follows up that whole batch
+GET    /api/followups/batches         batch summaries (label, count, createdAt, pendingByStage)
+POST   /api/sendFollowUpEmails        { batchId, stage } follows up that whole batch
 DELETE /api/followups/batches/:id     discard without emailing
 ```
 
-`messageStore.json` is versioned; an older flat store is migrated automatically
-into a single "Earlier sends" batch on first read, so existing data keeps working.
+`pendingByStage` on a batch summary counts the people waiting for each step, e.g.
+`{"1": 3, "2": 1}` — that is what the UI turns into one button per step.
+
+`messageStore.json` is versioned; v1 (flat) and v2 (batches, no thread info)
+stores are migrated on first read, so existing data keeps working.
+
+### Follow-up chains: nudge, then close the loop
+
+Every batch keeps its own reply chain — initial mail → **Follow-up 1** →
+**Follow-up 2**. Each step goes only to the people actually waiting for it:
+somebody who just received follow-up 1 is not also chased with follow-up 2 in the
+same run, and the server refuses a request that would send the wrong step
+(`skipped`, with `Awaiting follow-up N`). The contact leaves the queue after the
+last step.
+
+`inReplyTo` points at the newest message in the conversation and `references`
+carries all of it, so reply-under-reply nests correctly in Gmail:
+
+```
+initial              <root@id>
+  └─ follow-up 1     in-reply-to: <root@id>     references: <root@id>
+       └─ follow-up 2  in-reply-to: <fu1@id>    references: <root@id> <fu1@id>
+```
+
+The copy for each step lives on the server (`backend/utils/followUps.js`), so the
+UI editor and the send route fall back to the same text; a blank subject/body in
+a request means "use the built-in copy for that step".
+
+```
+GET  /api/followups/templates   built-in copy per step + how many steps (MAX_FOLLOW_UPS)
+GET  /api/followups?stage=2     only the people waiting for follow-up 2
+```
+
+```bash
+# follow-up 2 for a whole upload, using the built-in closing note
+curl -X POST localhost:3000/api/sendFollowUpEmails -H 'content-type: application/json' \
+  -d '{"batchId":"b_abc","stage":2}'
+```
+
+`stage` is optional and defaults to whatever each candidate is waiting for.
+`MAX_FOLLOW_UPS` (default `2`, max `5`) sets how many steps the chain has — raise
+it and an extra editor block plus an extra batch button appear; set it to `1` for
+the old single-follow-up behaviour.
 
 ### Resume attachment
 
@@ -217,6 +263,7 @@ See `backend/sample-candidates.csv`.
 | `DRAFT_STORE_PATH` | `./draftStore.json` | Saved batches file |
 | `CONTACT_STORE_PATH` | `./contactStore.json` | Permanent contact/send log |
 | `RECENT_CONTACT_DAYS` | `30` | Window for the "already emailed" warning |
+| `MAX_FOLLOW_UPS` | `2` | Follow-up steps per contact (1–5) |
 
 ## Notes on the rewrite
 
