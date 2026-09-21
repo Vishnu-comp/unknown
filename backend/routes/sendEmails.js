@@ -58,7 +58,7 @@ export function resolveAttachmentPath() {
     return fs.existsSync(p) ? p : null;
   }
 
-  const preferred = path.join(ASSETS_DIR, 'resume.pdf');
+  const preferred = path.join(ASSETS_DIR, 'Vishnu_SDE-1.pdf');
   if (fs.existsSync(preferred)) return preferred;
 
   try {
@@ -131,7 +131,7 @@ function buildAttachments() {
       warnedNoAttachment = true;
       console.warn(
         `No resume found - emails will be sent WITHOUT an attachment.\n` +
-          `   Place a PDF at ${path.join(ASSETS_DIR, 'resume.pdf')} or set ATTACHMENT_PATH.`
+          `   Place a PDF at ${path.join(ASSETS_DIR, 'Vishnu_SDE-1.pdf')} or set ATTACHMENT_PATH.`
       );
     }
     return [];
