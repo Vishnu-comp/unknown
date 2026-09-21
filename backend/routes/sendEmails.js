@@ -472,7 +472,7 @@ router.get('/followups', async (req, res, next) => {
  *
  * body: { candidates?, batchId?, stage?, emailSubject?, emailTemplate?, theme? }
  *
- * `stage` is which follow-up to send (1 = first nudge, 2 = the closing note).
+ * `stage` is which follow-up to send (1 = first nudge, 2 = the final note).
  * A candidate can only ever receive the step they are actually waiting for:
  * people awaiting follow-up 2 are skipped by a stage-1 request rather than
  * getting the same nudge twice. Once the last step has gone out the entry is

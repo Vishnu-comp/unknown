@@ -4,7 +4,7 @@ Bulk cold-outreach mailer with **threaded, multi-step follow-ups**.
 
 Upload a CSV of contacts, review/edit the copy, send personalized emails through
 Gmail one at a time, and later reply in the *same Gmail thread* — first a nudge,
-then a closing note.
+then a short final note.
 
 ```
 backend/    Express + Nodemailer API
@@ -19,8 +19,8 @@ frontend/   React (Vite) UI
 3. `GET /api/followups` lists everyone still awaiting a reply, tagged with the step
    they are on (follow-up 1 or 2).
 4. `POST /api/sendFollowUpEmails` replies with `inReplyTo` + `references` so Gmail threads it:
-   follow-up 1 nudges, follow-up 2 closes the loop, and the entry is removed once the last
-   step has gone out — so nobody is chased twice.
+   follow-up 1 nudges, follow-up 2 is a short final note, and the entry is removed once the
+   last step has gone out — so nobody is chased twice.
 
 Placeholders substituted per candidate: `[user name]`, `[company name]`,
 `[job description]`, `[job id]`.
@@ -160,7 +160,7 @@ DELETE /api/followups/batches/:id     discard without emailing
 `messageStore.json` is versioned; v1 (flat) and v2 (batches, no thread info)
 stores are migrated on first read, so existing data keeps working.
 
-### Follow-up chains: nudge, then close the loop
+### Follow-up chains: nudge, then a final note
 
 Every batch keeps its own reply chain — initial mail → **Follow-up 1** →
 **Follow-up 2**. Each step goes only to the people actually waiting for it:
@@ -188,7 +188,7 @@ GET  /api/followups?stage=2     only the people waiting for follow-up 2
 ```
 
 ```bash
-# follow-up 2 for a whole upload, using the built-in closing note
+# follow-up 2 for a whole upload, using the built-in final note
 curl -X POST localhost:3000/api/sendFollowUpEmails -H 'content-type: application/json' \
   -d '{"batchId":"b_abc","stage":2}'
 ```

@@ -26,19 +26,19 @@ const FOLLOW_UP_1_TEMPLATE = `<p>Hi [user name],</p>
 
 <p>Best regards,<br/><b>Vishnu Nair</b></p>`;
 
-// Second (and, by default, last) step: short, no new pitch, gives the reader an
-// easy way out. Reusing this for any stage past the first keeps the chain
-// working if MAX_FOLLOW_UPS is raised.
+// Second (and, by default, last) step: short, no new pitch, no pressure.
+// Reusing this for any stage past the first keeps the chain working if
+// MAX_FOLLOW_UPS is raised.
 const CLOSING_SUBJECT =
   'Re: [job description] Opportunity at [company name][if job id] (Job ID: [job id])[/if job id]';
 
 const CLOSING_TEMPLATE = `<p>Hi [user name],</p>
 
-<p>One last note from me about the <b>[job description]</b> role at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id] — I know inboxes get busy.</p>
+<p>I hope you don't mind me reaching out again about the <b>[job description]</b> role at <b>[company name]</b>[if job id] (Job ID: <b>[job id]</b>)[/if job id].</p>
 
-<p>I'm still keen to help if there's a fit. If the timing isn't right, a quick "not now" is genuinely useful and I'll close the loop.</p>
+<p>I'd still be glad to be considered, and I'm happy to share anything else that would help. Thank you for your time.</p>
 
-<p>Thanks either way,<br/><b>Vishnu Nair</b></p>`;
+<p>Best regards,<br/><b>Vishnu Nair</b></p>`;
 
 const DEFAULT_COPY = {
   1: { subject: FOLLOW_UP_1_SUBJECT, template: FOLLOW_UP_1_TEMPLATE },
@@ -48,7 +48,7 @@ const DEFAULT_COPY = {
 /** Descriptions used in the UI / API docs. */
 const STAGE_BLURB = {
   1: 'Nudge that replies in the original thread.',
-  2: 'Last note - closes the loop and gives an easy way out.',
+  2: 'A short, polite final note - nothing new, no pressure.',
 };
 
 export function isStage(value) {
@@ -77,7 +77,7 @@ export function isFinalStage(stage) {
   return Number(stage) >= MAX_FOLLOW_UPS;
 }
 
-/** Built-in copy for a stage; anything past the first reuses the closing note. */
+/** Built-in copy for a stage; anything past the first reuses the final note. */
 export function copyFor(stage) {
   const n = isStage(stage) ? Number(stage) : 1;
   return DEFAULT_COPY[n] || DEFAULT_COPY[2];

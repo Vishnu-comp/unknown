@@ -228,7 +228,7 @@ const CSVEmailSender = () => {
   // ─── Send follow-ups ──────────────────────────────────────────────────────
   //
   // One step at a time: `stage` is which follow-up to send (1 = first nudge,
-  // 2 = closing note). The server refuses to send the wrong step, so a group
+  // 2 = final note). The server refuses to send the wrong step, so a group
   // can only ever receive the follow-up it is actually waiting for.
   const runFollowUps = async (
     pending,
