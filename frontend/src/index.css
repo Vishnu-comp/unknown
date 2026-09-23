@@ -22,7 +22,7 @@ h2 { font-size: 17px; margin: 24px 0 8px; }
 
 label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
 
-textarea, input[type='file'] {
+textarea, input[type='file'], input[type='text'], input[type='email'] {
   width: 100%;
   font: inherit;
   font-size: 13px;
@@ -31,8 +31,73 @@ textarea, input[type='file'] {
   border-radius: 6px;
   background: #fff;
 }
+input[type='text'], input[type='email'] { min-height: 38px; }
 textarea { resize: vertical; }
 textarea.followup { background: #fffbeb; }
+
+/* ── Recipient entry ──────────────────────────────────────────── */
+.recipients-card h2 { margin: 0; }
+.section-heading,
+.manual-entry-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-heading .hint,
+.manual-entry-head .hint { margin-bottom: 0; }
+.count-badge,
+.entry-badge {
+  flex: none;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.manual-entry {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+.manual-entry h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+}
+.manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  margin-top: 4px;
+}
+.manual-field { margin: 10px 0 0; }
+.manual-field input { margin-top: 4px; }
+.required-mark { color: #dc2626; }
+.optional-mark {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 3px;
+}
+.manual-actions { margin-top: 14px; }
+.manual-actions .hint { flex: 1 1 240px; }
+.csv-entry {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+.csv-entry label { margin-top: 0; }
+
+@media (max-width: 620px) {
+  .manual-grid { grid-template-columns: 1fr; }
+  .section-heading,
+  .manual-entry-head { flex-direction: column; }
+}
 
 button {
   font: inherit;
