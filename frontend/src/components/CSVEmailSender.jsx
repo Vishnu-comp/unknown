@@ -621,17 +621,53 @@ const CSVEmailSender = () => {
 
   return (
     <div className="page">
-      <h1>Send personalized emails</h1>
-      <p className="hint">
-        Upload a CSV for a batch, or enter one recipient below — a CSV is no longer required.
-        Both options use the same template, preview, validation and follow-up flow.
-      </p>
-      <p className="hint">
-        CSV columns: <code>name, email, cc, companyName, jobDescription, jobId</code>. Optional
-        per-row <code>emailSubject</code> / <code>emailTemplate</code> override the shared copy.
-        Placeholders: <code>[user name]</code>, <code>[company name]</code>,{' '}
-        <code>[job description]</code>, <code>[job id]</code>.
-      </p>
+      <header className="hero">
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <span className="eyebrow-dot" /> Outreach workspace
+            <span className="eyebrow-divider" /> Gmail ready
+          </div>
+          <h1>Personal outreach, without the spreadsheet friction.</h1>
+          <p>
+            Add a recipient by hand or bring in a CSV, then shape every message before it leaves
+            your inbox.
+          </p>
+          <div className="hero-metrics">
+            <div>
+              <strong>{csvData.length}</strong>
+              <span>recipients loaded</span>
+            </div>
+            <div>
+              <strong>{followUps.length}</strong>
+              <span>follow-ups queued</span>
+            </div>
+          </div>
+        </div>
+        <div className="hero-panel" aria-label="Email workflow">
+          <span className="hero-panel-label">Your workflow</span>
+          <div className="workflow-step active">
+            <span className="workflow-number">01</span>
+            <span><b>Details</b><small>Add the right context</small></span>
+          </div>
+          <div className="workflow-line" />
+          <div className="workflow-step">
+            <span className="workflow-number">02</span>
+            <span><b>Preview</b><small>See the real email</small></span>
+          </div>
+          <div className="workflow-line" />
+          <div className="workflow-step">
+            <span className="workflow-number">03</span>
+            <span><b>Send</b><small>Keep the thread alive</small></span>
+          </div>
+        </div>
+      </header>
+
+      <div className="hero-note">
+        <span className="hero-note-label">CSV supported</span>
+        <span>Columns: <code>name, email, cc, companyName, jobDescription, jobId</code></span>
+        <span className="hero-note-separator">·</span>
+        <span>Per-row subject and template overrides are supported.</span>
+      </div>
 
       <div className="card recipients-card">
         <div className="section-heading">
@@ -760,7 +796,8 @@ const CSVEmailSender = () => {
       </div>
 
       {validation && (
-        <div className="card">
+        <div className="card validation-card">
+          <div className="card-kicker">Safety check</div>
           <h2>
             Pre-send check
             <span className="vcount">
@@ -850,7 +887,8 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="card">
+      <div className="card composer-card">
+        <div className="card-kicker">Compose</div>
         <h2>Initial email</h2>
         <label htmlFor="subject">Subject</label>
         <textarea id="subject" rows={2} value={subject} onChange={(e) => setSubject(e.target.value)} />
@@ -863,7 +901,8 @@ const CSVEmailSender = () => {
         />
       </div>
 
-      <div className="card">
+      <div className="card followup-card">
+        <div className="card-kicker">Stay in touch</div>
         <h2>Follow-up emails</h2>
         <p className="hint">
           Follow-ups reply inside the original Gmail thread, one step at a time: everyone gets{' '}
@@ -928,7 +967,8 @@ const CSVEmailSender = () => {
         )}
       </div>
 
-      <div className="card">
+      <div className="card theme-card">
+        <div className="card-kicker">Visual tone</div>
         <h2>Theme</h2>
         <div className="themes">
           {themeList.map((t) => (
@@ -965,7 +1005,8 @@ const CSVEmailSender = () => {
       </div>
 
       {preview && (
-        <div className="card">
+        <div className="card preview-result">
+          <div className="card-kicker">Rendered output</div>
           <h2>
             Preview — {preview.theme}
             {preview.step && <> &nbsp;·&nbsp; {preview.step}</>}
@@ -984,7 +1025,8 @@ const CSVEmailSender = () => {
       )}
 
       {drafts.length > 0 && (
-        <div className="card">
+        <div className="card saved-card">
+          <div className="card-kicker">Saved for later</div>
           <h2>Saved batches ({drafts.length})</h2>
           <p className="hint">
             Saved on the server and sent only when you press Send now. Nothing goes out on its
@@ -1023,7 +1065,13 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="row">
+      <div className="row action-bar">
+        <div className="action-copy">
+          <span className="action-label">Ready to send?</span>
+          <span className="action-hint">
+            {activeRows.length ? `${activeRows.length} recipient${activeRows.length === 1 ? '' : 's'} selected` : 'Add or import a recipient first'}
+          </span>
+        </div>
         <button className="secondary" onClick={sendEmails} disabled={sending || !activeRows.length}>
           {sending ? 'Sending...' : `Send Now (${activeRows.length})`}
         </button>
@@ -1053,7 +1101,7 @@ const CSVEmailSender = () => {
       {error && <p className="error">{error}</p>}
 
       {(sending || progress.total > 0) && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card progress-card" style={{ marginTop: 16 }}>
           <div className="bar">
             <div style={{ width: `${pct}%` }} />
           </div>
@@ -1063,10 +1111,13 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>
-          Candidate previews{csvData.length ? ` (${csvData.length})` : ''}
-        </h2>
+      <div className="row section-title-row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <div className="card-kicker">Review</div>
+          <h2 style={{ margin: 0 }}>
+            Candidate previews{csvData.length ? ` (${csvData.length})` : ''}
+          </h2>
+        </div>
         {csvData.length > 0 && (
           <span className="hint">
             {batchLoading ? 'Rendering...' : `Theme: ${theme}`}
