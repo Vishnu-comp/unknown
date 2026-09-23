@@ -2,9 +2,9 @@
 
 Bulk cold-outreach mailer with **threaded, multi-step follow-ups**.
 
-Upload a CSV of contacts, review/edit the copy, send personalized emails through
-Gmail one at a time, and later reply in the *same Gmail thread* — first a nudge,
-then a short, apologetic final note.
+Upload a CSV of contacts **or enter a recipient manually**, review/edit the copy,
+send personalized emails through Gmail one at a time, and later reply in the *same
+Gmail thread* — first a nudge, then a short, apologetic final note.
 
 ```
 backend/    Express + Nodemailer API
@@ -13,7 +13,8 @@ frontend/   React (Vite) UI
 
 ## How it works
 
-1. `POST /api/uploadCSV` stores the CSV; the UI fetches it back and parses it with PapaParse.
+1. `POST /api/uploadCSV` stores a CSV; the UI fetches it back and parses it with PapaParse.
+   A single recipient can also be entered directly in the UI, so a CSV is optional.
 2. `POST /api/sendCustomEmails` sends each mail sequentially (`SEND_DELAY_MS` apart) and
    records the resulting `Message-ID` in `messageStore.json`.
 3. `GET /api/followups` lists everyone still awaiting a reply, tagged with the step
@@ -140,11 +141,12 @@ DELETE /api/drafts/:id       discard without sending
 A batch is removed from the saved list once sent. If any recipient fails it is
 kept so you can retry.
 
-### Follow-ups are grouped per upload
+### Follow-ups are grouped per batch
 
-Each CSV upload becomes its own **batch**, so a second upload does not merge into
-the first. You can follow up one file at a time instead of mailing everyone at
-once, and each batch can be discarded without sending.
+Each CSV upload or manual recipient group becomes its own **batch**, so a second
+upload does not merge into the first and one-off sends remain separate. You can
+follow up one group at a time instead of mailing everyone at once, and each batch
+can be discarded without sending.
 
 ```
 GET    /api/followups                 all pending, each row tagged with its batch and step
@@ -233,6 +235,16 @@ npm run dev               # http://localhost:5173
 
 Vite proxies `/api` to `http://127.0.0.1:3000` (override with `BACKEND_URL`), so the browser
 only ever uses relative URLs — no hardcoded `localhost` in the app code.
+
+## Manual recipient entry
+
+A CSV is not required for a one-off email. In the **Recipients** card, fill in the
+recipient's name, email, company and job description; CC and job ID are optional.
+**Add recipient** puts the row through the normal validation and preview flow.
+**Add and send now** validates it and sends that one email immediately using the
+shared subject, body and selected theme. Manual recipients are stored in a batch
+labelled `Manual recipients`, so their Gmail thread remains available for the same
+follow-up workflow as CSV recipients.
 
 ## CSV format
 

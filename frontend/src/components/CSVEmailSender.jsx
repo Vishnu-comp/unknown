@@ -11,12 +11,27 @@ const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api' 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const GAP_MS = 2000;
 
+const EMPTY_MANUAL_CANDIDATE = {
+  name: '',
+  email: '',
+  cc: '',
+  companyName: '',
+  jobDescription: '',
+  jobId: '',
+};
+
+const newBatch = (label) => ({
+  id: `b_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
+  label,
+});
+
 const CSVEmailSender = () => {
   const [csvFile, setCsvFile] = useState(null);
+  const [manualCandidate, setManualCandidate] = useState(EMPTY_MANUAL_CANDIDATE);
   const [csvData, setCsvData] = useState([]);
   const [followUps, setFollowUps] = useState([]);
   const [batches, setBatches] = useState([]);
-  // Identity of the CSV currently loaded — sends are filed under this batch.
+  // Identity of the current recipient group — sends are filed under this batch.
   const [batchInfo, setBatchInfo] = useState(null);
   const [drafts, setDrafts] = useState([]);
   const [validation, setValidation] = useState(null);
@@ -152,10 +167,7 @@ const CSVEmailSender = () => {
           setValidation(null);
           if (rows.length) validateRows(rows);
           // Every upload becomes its own follow-up batch.
-          setBatchInfo({
-            id: `b_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
-            label: csvFile?.name || 'upload.csv',
-          });
+          setBatchInfo(newBatch(csvFile?.name || 'upload.csv'));
           if (!rows.length) {
             setBatchPreviews([]);
             setError('No usable rows found - the CSV needs an "email" column.');
@@ -169,19 +181,10 @@ const CSVEmailSender = () => {
   };
 
   // ─── Send initial emails ──────────────────────────────────────────────────
-  const sendEmails = async () => {
-    setError('');
-    if (!csvData.length) {
-      setError('No candidates to send emails to.');
-      return;
-    }
-    // activeRows drops invalid rows and anything ticked as skipped.
-    const queue = activeRows;
-    if (!queue.length) {
-      setError('Every row is skipped or invalid - nothing to send.');
-      return;
-    }
-
+  // The same queue is used by CSV sends and by the manual "Add & send" action,
+  // so both paths get identical batching, progress, follow-up and contact-log
+  // behaviour.
+  const sendQueue = async (queue, sendBatch = batchInfo, rowsToRefresh = csvData) => {
     setSending(true);
     setProgress({ current: 0, total: queue.length, status: 'Starting...' });
 
@@ -201,8 +204,8 @@ const CSVEmailSender = () => {
           emailSubject: subject,
           emailTemplate: template,
           theme,
-          batchId: batchInfo?.id,
-          batchLabel: batchInfo?.label,
+          batchId: sendBatch?.id,
+          batchLabel: sendBatch?.label,
         });
         failures += res.data.failCount || 0;
 
@@ -215,14 +218,89 @@ const CSVEmailSender = () => {
         status: failures ? `Done with ${failures} failure(s).` : 'All emails sent.',
       });
       await fetchFollowUps();
-      if (csvData.length) validateRows(csvData);
+      if (rowsToRefresh.length) await validateRows(rowsToRefresh);
+      return { successCount: queue.length - failures, failCount: failures };
     } catch (err) {
       console.error('Send failed:', err);
       setError(err.response?.data?.message || 'Sending failed. Check the console.');
       setProgress((p) => ({ ...p, status: 'Failed. Check logs.' }));
+      return null;
     } finally {
       setSending(false);
     }
+  };
+
+  const sendEmails = async () => {
+    setError('');
+    if (!csvData.length) {
+      setError('No candidates to send emails to.');
+      return;
+    }
+    // activeRows drops invalid rows and anything ticked as skipped.
+    const queue = activeRows;
+    if (!queue.length) {
+      setError('Every row is skipped or invalid - nothing to send.');
+      return;
+    }
+
+    await sendQueue(queue, batchInfo, csvData);
+  };
+
+  // A manual recipient is added to the same working list used by CSV rows.
+  // This keeps the existing preview, validation, save-for-later and follow-up
+  // features available without making the user create a one-row CSV.
+  const addManualCandidate = async (event, sendNow = false) => {
+    event?.preventDefault();
+    setError('');
+
+    const candidate = Object.fromEntries(
+      Object.entries(manualCandidate).map(([key, value]) => [key, String(value || '').trim()])
+    );
+
+    if (!candidate.name || !candidate.email || !candidate.companyName || !candidate.jobDescription) {
+      setError('Name, email, company and job description are required for a manual recipient.');
+      return;
+    }
+
+    const nextRows = [...csvData, candidate];
+    const sendBatch = batchInfo || newBatch('Manual recipients');
+
+    setCsvData(nextRows);
+    setBatchInfo(sendBatch);
+    setExpanded(null);
+
+    const result = await validateRows(nextRows);
+    if (!result) {
+      if (sendNow) setError('Could not validate this recipient. It was added but not sent.');
+      setManualCandidate(EMPTY_MANUAL_CANDIDATE);
+      return;
+    }
+
+    const addedValidation = result.rows[result.rows.length - 1];
+    const recentlyContacted = Boolean(
+      addedValidation?.contacted &&
+        result?.summary &&
+        addedValidation.contacted.daysAgo <= result.summary.recentDays
+    );
+    const duplicate = Boolean(addedValidation?.duplicate);
+
+    if (sendNow && addedValidation?.sendable && !recentlyContacted && !duplicate) {
+      const outcome = await sendQueue([candidate], sendBatch, nextRows);
+      if (outcome?.successCount) setManualCandidate(EMPTY_MANUAL_CANDIDATE);
+      return;
+    }
+
+    if (sendNow) {
+      if (!addedValidation?.sendable) {
+        setError('That email address is invalid. Fix it in the pre-send check before sending.');
+      } else if (recentlyContacted) {
+        setError('This recipient was contacted recently. Review the pre-send warning before sending.');
+      } else if (duplicate) {
+        setError('This email is already in the recipient list. The new row was added and pre-ticked to skip.');
+      }
+    }
+
+    setManualCandidate(EMPTY_MANUAL_CANDIDATE);
   };
 
   // ─── Send follow-ups ──────────────────────────────────────────────────────
@@ -440,8 +518,10 @@ const CSVEmailSender = () => {
         .filter((r) => !r.sendable || r.duplicate || (r.contacted && r.contacted.daysAgo <= data.summary.recentDays))
         .map((r) => r.index);
       setSkipped(auto);
+      return data;
     } catch (err) {
       console.error('Validation failed:', err);
+      return null;
     }
   };
 
@@ -460,7 +540,7 @@ const CSVEmailSender = () => {
   const saveForLater = async () => {
     setError('');
     if (!csvData.length) {
-      setError('Upload a CSV first.');
+      setError('Add a recipient or import a CSV first.');
       return;
     }
 
@@ -540,37 +620,227 @@ const CSVEmailSender = () => {
   const clearRowThemes = () => setCsvData((rows) => rows.map(({ theme: _t, ...r }) => r));
 
   return (
-    <div className="page">
-      <h1>Upload CSV and Send Emails</h1>
-      <p className="hint">
-        CSV columns: <code>name, email, cc, companyName, jobDescription, jobId</code>. Optional
-        per-row <code>emailSubject</code> / <code>emailTemplate</code> override the shared copy.
-        Placeholders: <code>[user name]</code>, <code>[company name]</code>,{' '}
-        <code>[job description]</code>, <code>[job id]</code>.
-      </p>
-      <p className="hint">
-        <code>jobId</code> is optional — wrap the bits that depend on it in{' '}
-        <code>[if job id]...[/if job id]</code> and they are dropped entirely for rows without one.
-      </p>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-lockup">
+          <span className="brand-mark">V</span>
+          <span className="brand-copy">
+            <b>Outreach</b>
+            <small>studio</small>
+          </span>
+        </div>
 
-      <div className="card">
-        <label htmlFor="csv">CSV file</label>
-        <input
-          id="csv"
-          type="file"
-          accept=".csv"
-          onChange={(e) => setCsvFile(e.target.files[0])}
-        />
-        <div className="row">
-          <button onClick={handleUpload} disabled={sending}>
-            Parse CSV
-          </button>
-          {csvData.length > 0 && <span className="hint">{csvData.length} candidate(s) loaded</span>}
+        <div className="sidebar-rule" />
+        <span className="nav-label">Workspace</span>
+        <nav className="side-nav" aria-label="Workspace sections">
+          <a className="active" href="#recipients">
+            <span className="nav-number">01</span>
+            <span><b>Recipients</b><small>{csvData.length ? `${csvData.length} loaded` : 'Add people'}</small></span>
+          </a>
+          <a href="#compose">
+            <span className="nav-number">02</span>
+            <span><b>Compose</b><small>Shape the message</small></span>
+          </a>
+          <a href="#followups">
+            <span className="nav-number">03</span>
+            <span><b>Follow-ups</b><small>{followUps.length ? `${followUps.length} queued` : 'Set your sequence'}</small></span>
+          </a>
+          <a href="#previews">
+            <span className="nav-number">04</span>
+            <span><b>Review</b><small>Preview before sending</small></span>
+          </a>
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="sidebar-status"><span className="live-dot" /> Workspace ready</div>
+          <p>Thoughtful outreach starts with a little context.</p>
+        </div>
+      </aside>
+
+      <main className="page">
+      <header className="hero">
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <span className="eyebrow-dot" /> Outreach workspace
+            <span className="eyebrow-divider" /> Gmail ready
+          </div>
+          <h1>Personal outreach, without the spreadsheet friction.</h1>
+          <p>
+            Add a recipient by hand or bring in a CSV, then shape every message before it leaves
+            your inbox.
+          </p>
+          <div className="hero-metrics">
+            <div>
+              <strong>{csvData.length}</strong>
+              <span>recipients loaded</span>
+            </div>
+            <div>
+              <strong>{followUps.length}</strong>
+              <span>follow-ups queued</span>
+            </div>
+          </div>
+        </div>
+        <div className="hero-panel" aria-label="Email workflow">
+          <span className="hero-panel-label">Your workflow</span>
+          <div className="workflow-step active">
+            <span className="workflow-number">01</span>
+            <span><b>Details</b><small>Add the right context</small></span>
+          </div>
+          <div className="workflow-line" />
+          <div className="workflow-step">
+            <span className="workflow-number">02</span>
+            <span><b>Preview</b><small>See the real email</small></span>
+          </div>
+          <div className="workflow-line" />
+          <div className="workflow-step">
+            <span className="workflow-number">03</span>
+            <span><b>Send</b><small>Keep the thread alive</small></span>
+          </div>
+        </div>
+      </header>
+
+      <div className="hero-note">
+        <span className="hero-note-label">CSV supported</span>
+        <span>Columns: <code>name, email, cc, companyName, jobDescription, jobId</code></span>
+        <span className="hero-note-separator">·</span>
+        <span>Per-row subject and template overrides are supported.</span>
+      </div>
+
+      <div className="card recipients-card" id="recipients">
+        <div className="section-heading">
+          <div>
+            <h2>Recipients</h2>
+            <p className="hint">Add a single recipient manually or import several from a CSV file.</p>
+          </div>
+          {csvData.length > 0 && <span className="count-badge">{csvData.length} loaded</span>}
+        </div>
+
+        <div className="intake-grid">
+          <div className="manual-entry">
+            <div className="manual-entry-head">
+            <div>
+              <h3>Enter recipient details</h3>
+              <p className="hint">
+                Required fields are marked <span className="required-mark">*</span>. Add the
+                recipient to the list, or add it and send immediately.
+              </p>
+            </div>
+            <span className="entry-badge">No CSV needed</span>
+          </div>
+
+          <form onSubmit={(event) => addManualCandidate(event)}>
+            <div className="manual-grid">
+              <label className="manual-field" htmlFor="manual-name">
+                Full name <span className="required-mark">*</span>
+                <input
+                  id="manual-name"
+                  type="text"
+                  value={manualCandidate.name}
+                  onChange={(e) => setManualCandidate((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Asha Rao"
+                  required
+                />
+              </label>
+              <label className="manual-field" htmlFor="manual-email">
+                Email address <span className="required-mark">*</span>
+                <input
+                  id="manual-email"
+                  type="email"
+                  value={manualCandidate.email}
+                  onChange={(e) => setManualCandidate((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="asha@example.com"
+                  required
+                />
+              </label>
+              <label className="manual-field" htmlFor="manual-company">
+                Company <span className="required-mark">*</span>
+                <input
+                  id="manual-company"
+                  type="text"
+                  value={manualCandidate.companyName}
+                  onChange={(e) =>
+                    setManualCandidate((prev) => ({ ...prev, companyName: e.target.value }))
+                  }
+                  placeholder="Acme Corp"
+                  required
+                />
+              </label>
+              <label className="manual-field" htmlFor="manual-job">
+                Job description <span className="required-mark">*</span>
+                <input
+                  id="manual-job"
+                  type="text"
+                  value={manualCandidate.jobDescription}
+                  onChange={(e) =>
+                    setManualCandidate((prev) => ({ ...prev, jobDescription: e.target.value }))
+                  }
+                  placeholder="Backend Engineer"
+                  required
+                />
+              </label>
+              <label className="manual-field" htmlFor="manual-cc">
+                CC <span className="optional-mark">optional</span>
+                <input
+                  id="manual-cc"
+                  type="text"
+                  value={manualCandidate.cc}
+                  onChange={(e) => setManualCandidate((prev) => ({ ...prev, cc: e.target.value }))}
+                  placeholder="manager@example.com"
+                />
+              </label>
+              <label className="manual-field" htmlFor="manual-job-id">
+                Job ID <span className="optional-mark">optional</span>
+                <input
+                  id="manual-job-id"
+                  type="text"
+                  value={manualCandidate.jobId}
+                  onChange={(e) => setManualCandidate((prev) => ({ ...prev, jobId: e.target.value }))}
+                  placeholder="ENG-101"
+                />
+              </label>
+            </div>
+            <div className="row manual-actions">
+              <button type="submit" disabled={sending}>
+                Add recipient
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={(event) => addManualCandidate(event, true)}
+                disabled={sending}
+              >
+                Add and send now
+              </button>
+              <span className="hint">The shared subject and email body below will be used.</span>
+            </div>
+          </form>
+        </div>
+
+          <div className="csv-entry">
+            <div className="csv-entry-icon">CSV</div>
+            <div className="csv-entry-copy">
+              <label htmlFor="csv">Import a batch</label>
+              <p className="hint">Bring multiple contacts in at once.</p>
+            </div>
+            <input
+              id="csv"
+              type="file"
+              accept=".csv"
+              onChange={(e) => setCsvFile(e.target.files[0])}
+            />
+            <div className="row">
+              <button onClick={handleUpload} disabled={sending}>
+                Parse CSV
+              </button>
+              {csvData.length > 0 && <span className="hint">{csvData.length} recipient(s) loaded</span>}
+            </div>
+          </div>
         </div>
       </div>
 
       {validation && (
-        <div className="card">
+        <div className="card validation-card" id="safety">
+          <div className="card-kicker">Safety check</div>
           <h2>
             Pre-send check
             <span className="vcount">
@@ -660,7 +930,8 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="card">
+      <div className="card composer-card" id="compose">
+        <div className="card-kicker">Compose</div>
         <h2>Initial email</h2>
         <label htmlFor="subject">Subject</label>
         <textarea id="subject" rows={2} value={subject} onChange={(e) => setSubject(e.target.value)} />
@@ -673,7 +944,8 @@ const CSVEmailSender = () => {
         />
       </div>
 
-      <div className="card">
+      <div className="card followup-card" id="followups">
+        <div className="card-kicker">Stay in touch</div>
         <h2>Follow-up emails</h2>
         <p className="hint">
           Follow-ups reply inside the original Gmail thread, one step at a time: everyone gets{' '}
@@ -738,7 +1010,8 @@ const CSVEmailSender = () => {
         )}
       </div>
 
-      <div className="card">
+      <div className="card theme-card" id="theme">
+        <div className="card-kicker">Visual tone</div>
         <h2>Theme</h2>
         <div className="themes">
           {themeList.map((t) => (
@@ -775,7 +1048,8 @@ const CSVEmailSender = () => {
       </div>
 
       {preview && (
-        <div className="card">
+        <div className="card preview-result" id="preview-result">
+          <div className="card-kicker">Rendered output</div>
           <h2>
             Preview — {preview.theme}
             {preview.step && <> &nbsp;·&nbsp; {preview.step}</>}
@@ -794,7 +1068,8 @@ const CSVEmailSender = () => {
       )}
 
       {drafts.length > 0 && (
-        <div className="card">
+        <div className="card saved-card" id="saved">
+          <div className="card-kicker">Saved for later</div>
           <h2>Saved batches ({drafts.length})</h2>
           <p className="hint">
             Saved on the server and sent only when you press Send now. Nothing goes out on its
@@ -833,7 +1108,13 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="row">
+      <div className="row action-bar">
+        <div className="action-copy">
+          <span className="action-label">Ready to send?</span>
+          <span className="action-hint">
+            {activeRows.length ? `${activeRows.length} recipient${activeRows.length === 1 ? '' : 's'} selected` : 'Add or import a recipient first'}
+          </span>
+        </div>
         <button className="secondary" onClick={sendEmails} disabled={sending || !activeRows.length}>
           {sending ? 'Sending...' : `Send Now (${activeRows.length})`}
         </button>
@@ -863,7 +1144,7 @@ const CSVEmailSender = () => {
       {error && <p className="error">{error}</p>}
 
       {(sending || progress.total > 0) && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card progress-card" style={{ marginTop: 16 }}>
           <div className="bar">
             <div style={{ width: `${pct}%` }} />
           </div>
@@ -873,10 +1154,13 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>
-          Candidate previews{csvData.length ? ` (${csvData.length})` : ''}
-        </h2>
+      <div className="row section-title-row" id="previews" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <div className="card-kicker">Review</div>
+          <h2 style={{ margin: 0 }}>
+            Candidate previews{csvData.length ? ` (${csvData.length})` : ''}
+          </h2>
+        </div>
         {csvData.length > 0 && (
           <span className="hint">
             {batchLoading ? 'Rendering...' : `Theme: ${theme}`}
@@ -886,7 +1170,9 @@ const CSVEmailSender = () => {
         )}
       </div>
 
-      {!csvData.length && <p className="hint">Upload and parse a CSV to see every email here.</p>}
+      {!csvData.length && (
+        <p className="hint">Add a recipient above or import a CSV to see the rendered email here.</p>
+      )}
 
       {csvData.length > 0 && (
         <p className="hint">
@@ -983,12 +1269,19 @@ const CSVEmailSender = () => {
       </div>
 
       {batches.length > 0 && (
-        <>
-          <h2>Pending follow-ups by upload ({followUps.length})</h2>
-          <p className="hint">
-            Each CSV upload is its own batch, so you can follow up one file at a time instead of
-            everyone at once. Every batch shows which step its people are on — follow-up 2 only goes
-            to those still waiting after follow-up 1. Sent follow-ups leave the batch automatically.
+        <section className="queue-section" id="queue">
+          <div className="section-heading queue-heading">
+            <div>
+              <div className="card-kicker">Follow-up queue</div>
+              <h2>Pending follow-ups by batch ({followUps.length})</h2>
+            </div>
+            <span className="count-badge">{followUps.length} waiting</span>
+          </div>
+          <p className="hint queue-intro">
+            Each CSV upload or manual recipient group is its own batch, so you can follow up one
+            group at a time instead of everyone at once. Every batch shows which step its people
+            are on — follow-up 2 only goes to those still waiting after follow-up 1. Sent follow-ups
+            leave the batch automatically.
           </p>
 
           {batches.map((b) => {
@@ -1073,9 +1366,10 @@ const CSVEmailSender = () => {
               </div>
             );
           })}
-        </>
+        </section>
       )}
 
+      </main>
     </div>
   );
 };
