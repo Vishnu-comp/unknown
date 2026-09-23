@@ -620,7 +620,44 @@ const CSVEmailSender = () => {
   const clearRowThemes = () => setCsvData((rows) => rows.map(({ theme: _t, ...r }) => r));
 
   return (
-    <div className="page">
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-lockup">
+          <span className="brand-mark">V</span>
+          <span className="brand-copy">
+            <b>Outreach</b>
+            <small>studio</small>
+          </span>
+        </div>
+
+        <div className="sidebar-rule" />
+        <span className="nav-label">Workspace</span>
+        <nav className="side-nav" aria-label="Workspace sections">
+          <a className="active" href="#recipients">
+            <span className="nav-number">01</span>
+            <span><b>Recipients</b><small>{csvData.length ? `${csvData.length} loaded` : 'Add people'}</small></span>
+          </a>
+          <a href="#compose">
+            <span className="nav-number">02</span>
+            <span><b>Compose</b><small>Shape the message</small></span>
+          </a>
+          <a href="#followups">
+            <span className="nav-number">03</span>
+            <span><b>Follow-ups</b><small>{followUps.length ? `${followUps.length} queued` : 'Set your sequence'}</small></span>
+          </a>
+          <a href="#previews">
+            <span className="nav-number">04</span>
+            <span><b>Review</b><small>Preview before sending</small></span>
+          </a>
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="sidebar-status"><span className="live-dot" /> Workspace ready</div>
+          <p>Thoughtful outreach starts with a little context.</p>
+        </div>
+      </aside>
+
+      <main className="page">
       <header className="hero">
         <div className="hero-copy">
           <div className="eyebrow">
@@ -669,7 +706,7 @@ const CSVEmailSender = () => {
         <span>Per-row subject and template overrides are supported.</span>
       </div>
 
-      <div className="card recipients-card">
+      <div className="card recipients-card" id="recipients">
         <div className="section-heading">
           <div>
             <h2>Recipients</h2>
@@ -678,8 +715,9 @@ const CSVEmailSender = () => {
           {csvData.length > 0 && <span className="count-badge">{csvData.length} loaded</span>}
         </div>
 
-        <div className="manual-entry">
-          <div className="manual-entry-head">
+        <div className="intake-grid">
+          <div className="manual-entry">
+            <div className="manual-entry-head">
             <div>
               <h3>Enter recipient details</h3>
               <p className="hint">
@@ -778,25 +816,30 @@ const CSVEmailSender = () => {
           </form>
         </div>
 
-        <div className="csv-entry">
-          <label htmlFor="csv">Import CSV instead</label>
-          <input
-            id="csv"
-            type="file"
-            accept=".csv"
-            onChange={(e) => setCsvFile(e.target.files[0])}
-          />
-          <div className="row">
-            <button onClick={handleUpload} disabled={sending}>
-              Parse CSV
-            </button>
-            {csvData.length > 0 && <span className="hint">{csvData.length} recipient(s) loaded</span>}
+          <div className="csv-entry">
+            <div className="csv-entry-icon">CSV</div>
+            <div className="csv-entry-copy">
+              <label htmlFor="csv">Import a batch</label>
+              <p className="hint">Bring multiple contacts in at once.</p>
+            </div>
+            <input
+              id="csv"
+              type="file"
+              accept=".csv"
+              onChange={(e) => setCsvFile(e.target.files[0])}
+            />
+            <div className="row">
+              <button onClick={handleUpload} disabled={sending}>
+                Parse CSV
+              </button>
+              {csvData.length > 0 && <span className="hint">{csvData.length} recipient(s) loaded</span>}
+            </div>
           </div>
         </div>
       </div>
 
       {validation && (
-        <div className="card validation-card">
+        <div className="card validation-card" id="safety">
           <div className="card-kicker">Safety check</div>
           <h2>
             Pre-send check
@@ -887,7 +930,7 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="card composer-card">
+      <div className="card composer-card" id="compose">
         <div className="card-kicker">Compose</div>
         <h2>Initial email</h2>
         <label htmlFor="subject">Subject</label>
@@ -901,7 +944,7 @@ const CSVEmailSender = () => {
         />
       </div>
 
-      <div className="card followup-card">
+      <div className="card followup-card" id="followups">
         <div className="card-kicker">Stay in touch</div>
         <h2>Follow-up emails</h2>
         <p className="hint">
@@ -967,7 +1010,7 @@ const CSVEmailSender = () => {
         )}
       </div>
 
-      <div className="card theme-card">
+      <div className="card theme-card" id="theme">
         <div className="card-kicker">Visual tone</div>
         <h2>Theme</h2>
         <div className="themes">
@@ -1005,7 +1048,7 @@ const CSVEmailSender = () => {
       </div>
 
       {preview && (
-        <div className="card preview-result">
+        <div className="card preview-result" id="preview-result">
           <div className="card-kicker">Rendered output</div>
           <h2>
             Preview — {preview.theme}
@@ -1025,7 +1068,7 @@ const CSVEmailSender = () => {
       )}
 
       {drafts.length > 0 && (
-        <div className="card saved-card">
+        <div className="card saved-card" id="saved">
           <div className="card-kicker">Saved for later</div>
           <h2>Saved batches ({drafts.length})</h2>
           <p className="hint">
@@ -1111,7 +1154,7 @@ const CSVEmailSender = () => {
         </div>
       )}
 
-      <div className="row section-title-row" style={{ justifyContent: 'space-between' }}>
+      <div className="row section-title-row" id="previews" style={{ justifyContent: 'space-between' }}>
         <div>
           <div className="card-kicker">Review</div>
           <h2 style={{ margin: 0 }}>
@@ -1226,9 +1269,15 @@ const CSVEmailSender = () => {
       </div>
 
       {batches.length > 0 && (
-        <>
-          <h2>Pending follow-ups by batch ({followUps.length})</h2>
-          <p className="hint">
+        <section className="queue-section" id="queue">
+          <div className="section-heading queue-heading">
+            <div>
+              <div className="card-kicker">Follow-up queue</div>
+              <h2>Pending follow-ups by batch ({followUps.length})</h2>
+            </div>
+            <span className="count-badge">{followUps.length} waiting</span>
+          </div>
+          <p className="hint queue-intro">
             Each CSV upload or manual recipient group is its own batch, so you can follow up one
             group at a time instead of everyone at once. Every batch shows which step its people
             are on — follow-up 2 only goes to those still waiting after follow-up 1. Sent follow-ups
@@ -1317,9 +1366,10 @@ const CSVEmailSender = () => {
               </div>
             );
           })}
-        </>
+        </section>
       )}
 
+      </main>
     </div>
   );
 };
