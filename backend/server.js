@@ -8,6 +8,7 @@ import emailRoutes from './routes/sendEmails.js';
 import galleryRoutes from './routes/gallery.js';
 import draftRoutes from './routes/drafts.js';
 import contactRoutes from './routes/contacts.js';
+import { referralScoutApi, referralScoutUI } from './routes/referralScout.js';
 import { UPLOAD_DIR } from './routes/uploadCSV.js';
 
 dotenv.config();
@@ -35,6 +36,10 @@ app.use('/api', draftRoutes);
 
 // Contact history + pre-send CSV validation
 app.use('/api', contactRoutes);
+
+// Referral Scout: UI at /referral-scout, API at /api/scout (no separate server)
+app.use('/referral-scout', referralScoutUI);
+app.use('/api', referralScoutApi);
 
 app.use((req, res) => res.status(404).json({ message: `Not found: ${req.originalUrl}` }));
 
