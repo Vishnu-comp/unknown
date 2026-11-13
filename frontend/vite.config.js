@@ -15,6 +15,11 @@ export default defineConfig({
         target: process.env.BACKEND_URL || 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
+      // Referral Scout UI is served by the backend; proxy it like /api.
+      '/referral-scout': {
+        target: process.env.BACKEND_URL || 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
     },
   },
 });
