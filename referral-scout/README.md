@@ -23,6 +23,23 @@ For each person, in batches of 10:
 
 Get the next 10 with `--batch 2`, then `--batch 3`, and so on.
 
+## Web UI
+
+Prefer clicking to typing? There's a local single-page UI, no dependencies:
+
+```
+node referral-scout/server.mjs    # from the repo root
+```
+
+Then open http://localhost:3737 (set `PORT=8080` to change the port). Paste the
+company's LinkedIn URL, and you get the same ranked people as the CLI, 10 at a
+time - name, LinkedIn link, email only when found on a public page, and a
+referral draft with a **Copy draft** button per person. A **Next 10** button
+loads the following batch (results are cached in memory, so it doesn't
+re-scrape). It reuses the exact same logic as `scout.mjs` and never sends
+anything. Tip: `http://localhost:3737/?company=<linkedin company url>` prefills
+and runs the search straight from the link.
+
 ## Install and run
 
 No dependencies. You need Node 18 or newer (it uses the built-in `fetch`).
