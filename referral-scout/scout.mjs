@@ -21,7 +21,12 @@
  * Usage:
  *   node scout.mjs "https://www.linkedin.com/company/acme" --your-name "Vishnu Nair"
  *   node scout.mjs "Acme Corp" --batch 2 --json out.json --out report.md
+ *
+ * The same logic powers the local web UI (server.mjs) - it imports
+ * scoutCompany() from this file, so CLI and UI always behave identically.
  */
+
+import { pathToFileURL } from "node:url";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -87,7 +92,7 @@ async function fetchText(url, { timeoutMs = 15000 } = {}) {
 // input parsing
 // ---------------------------------------------------------------------------
 
-function parseCompany(input) {
+export function parseCompany(input) {
   const m = input.match(/linkedin\.com\/company\/([^\/?#]+)/i);
   if (m) {
     const slug = m[1].replace(/\/$/, "");
@@ -372,7 +377,7 @@ async function findGitHubPeople(company, { limit = 10, token = null } = {}) {
 
 const KIND_ORDER = { recruiter: 0, founder: 1, engineer: 2 };
 
-function rankPeople(people) {
+export function rankPeople(people) {
   return people.sort((a, b) => {
     const k = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
     if (k) return k;
@@ -382,7 +387,7 @@ function rankPeople(people) {
   });
 }
 
-function makeDraft(person, company, opts) {
+export function makeDraft(person, company, opts) {
   const yourName = opts.yourName || "[Your name]";
   const yourRole = opts.yourRole || "[your current role]";
   const isInbox = /general inbox/i.test(person.name || "");
@@ -460,24 +465,22 @@ function parseArgs(argv) {
   return args;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.input) {
-    console.error(
-      'Usage: node scout.mjs "<linkedin company url or company name>" [--batch N] [--batch-size N]\n' +
-        '          [--your-name "Name"] [--your-role "Role"] [--domain example.com]\n' +
-        "          [--json out.json] [--out report.md] [--no-search] [--no-github] [--no-site] [--verbose]"
-    );
-    process.exit(1);
-  }
-  const company = parseCompany(args.input);
-  console.error(`Company: ${company.name}`);
+/**
+ * Run the full scout pipeline for one company and return everything gathered.
+ * Shared by the CLI (below) and the web UI (server.mjs).
+ *
+ * @param {string} input LinkedIn company URL or plain company name
+ * @param {object} opts  { domain, noSearch, noSite, noGithub }
+ * @returns {{ company: object, ranked: object[], notes: string[] }}
+ */
+export async function scoutCompany(input, opts = {}) {
+  const company = parseCompany(input);
 
   const people = [];
   const notes = [];
   const searchState = { deadBackends: new Set(), usedBackends: new Set() };
 
-  if (!args.noSearch) {
+  if (!opts.noSearch) {
     people.push(...(await findPeopleViaSearch(company, searchState)));
     if (searchState.usedBackends.size)
       notes.push(`Search backend(s) used: ${[...searchState.usedBackends].join(", ")}.`);
@@ -488,8 +491,8 @@ async function main() {
       );
   }
 
-  if (!args.noSite) {
-    const site = await scanCompanySite(company, args.domain);
+  if (!opts.noSite) {
+    const site = await scanCompanySite(company, opts.domain);
     if (site.emails.length) {
       people.push({
         name: `${company.name} (general inbox)`,
@@ -507,12 +510,27 @@ async function main() {
     }
   }
 
-  if (!args.noGithub) {
+  if (!opts.noGithub) {
     const gh = await findGitHubPeople(company, { token: process.env.GITHUB_TOKEN || null });
     people.push(...gh);
   }
 
   const ranked = rankPeople(people.filter((p) => p.name || p.emails.length));
+  return { company, ranked, notes };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.input) {
+    console.error(
+      'Usage: node scout.mjs "<linkedin company url or company name>" [--batch N] [--batch-size N]\n' +
+        '          [--your-name "Name"] [--your-role "Role"] [--domain example.com]\n' +
+        "          [--json out.json] [--out report.md] [--no-search] [--no-github] [--no-site] [--verbose]"
+    );
+    process.exit(1);
+  }
+  const { company, ranked, notes } = await scoutCompany(args.input, args);
+  console.error(`Company: ${company.name}`);
   const offset = (args.batch - 1) * args.batchSize;
   const batch = ranked.slice(offset, offset + args.batchSize);
 
@@ -539,7 +557,14 @@ async function main() {
   );
 }
 
-main().catch((e) => {
-  console.error(`error: ${e.message}`);
-  process.exit(1);
-});
+// Run the CLI only when this file is executed directly, not when server.mjs
+// imports it.
+const invokedDirectly =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error(`error: ${e.message}`);
+    process.exit(1);
+  });
+}
