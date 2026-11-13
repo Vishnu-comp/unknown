@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>referral-scout</title>
+<style>
+  :root {
+    --bg: #0f1218;
+    --panel: #181d27;
+    --panel-2: #1f2633;
+    --border: #2b3446;
+    --text: #e8ecf3;
+    --muted: #94a0b5;
+    --accent: #4f8cff;
+    --accent-hover: #3b78ec;
+    --recruiter: #f0a35e;
+    --founder: #c792ea;
+    --engineer: #5ec9a7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type="text"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 10px 18px;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: var(--border); cursor: default; }
+  #go { margin-top: 16px; width: 100%; padding: 12px; font-size: 15px; font-weight: 600; }
+  .person-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .person-head .n { color: var(--muted); font-size: 13px; }
+  .person-head h2 { font-size: 16px; margin: 0; }
+  .badge {
+    font-size: 11px;
+    border-radius: 999px;
+    padding: 2px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge.recruiter { background: rgba(240,163,94,.15); color: var(--recruiter); }
+  .badge.founder { background: rgba(199,146,234,.15); color: var(--founder); }
+  .badge.engineer { background: rgba(94,201,167,.15); color: var(--engineer); }
+  .headline { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+  .links { font-size: 13px; margin-bottom: 8px; }
+  .links a { color: var(--accent); margin-right: 14px; }
+  .email { font-size: 13px; color: var(--text); }
+  .email em { color: var(--muted); font-style: normal; }
+  pre.draft {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font: 13px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 10px 0 8px;
+    padding: 12px;
+    white-space: pre-wrap;
+  }
+  .copy {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  .copy:hover { border-color: var(--accent); background: var(--panel-2); }
+  #status { color: var(--muted); font-size: 13px; margin: 18px 0; }
+  #status.err { color: #ff8080; }
+  .notes { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+  .notes div { margin-bottom: 2px; }
+  #more { display: none; width: 100%; margin-top: 8px; }
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: -2px;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>referral-scout</h1>
+  <div class="sub">Ranked people worth asking for a referral, from public sources only. Nothing is ever sent - drafts are copy-paste only.</div>
+
+  <div class="card">
+    <label for="input">Company LinkedIn URL (or company name)</label>
+    <input type="text" id="input" placeholder="https://www.linkedin.com/company/kirana-club">
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label for="yourName">Your name (signs the drafts)</label>
+        <input type="text" id="yourName" value="Vishnu Nair">
+      </div>
+      <div>
+        <label for="yourRole">Your current role (used in the drafts)</label>
+        <input type="text" id="yourRole" value="Full Stack Developer at Shoffr">
+      </div>
+    </div>
+    <button id="go">Find people</button>
+  </div>
+
+  <div id="status"></div>
+  <div class="notes" id="notes"></div>
+  <div id="results"></div>
+  <button id="more">Next 10</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let current = null; // { input, yourName, yourRole, batch, total }
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function setStatus(html, isErr) {
+  const el = $("status");
+  el.innerHTML = html || "";
+  el.className = isErr ? "err" : "";
+}
+
+function renderPeople(people, offset, company) {
+  const out = $("results");
+  people.forEach((p, i) => {
+    const n = offset + i + 1;
+    const card = document.createElement("div");
+    card.className = "card";
+    const emailHtml = p.emails.length
+      ? p.emails.map((e) => `<div class="email">&#9993; ${escapeHtml(e.email)} <em>(${escapeHtml(e.source)})</em></div>`).join("")
+      : `<div class="email"><em>No email found in public sources</em></div>`;
+    card.innerHTML = `
+      <div class="person-head">
+        <span class="n">#${n}</span>
+        <h2>${escapeHtml(p.name)}</h2>
+        <span class="badge ${p.kind}">${p.kind}</span>
+      </div>
+      <div class="headline">${escapeHtml(p.headline)}</div>
+      <div class="links">
+        ${p.linkedin ? `<a href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ""}
+        ${p.github ? `<a href="${escapeHtml(p.github)}" target="_blank" rel="noopener">GitHub</a>` : ""}
+        ${p.site ? `<a href="${escapeHtml(p.site)}" target="_blank" rel="noopener">Site</a>` : ""}
+      </div>
+      ${emailHtml}
+      <pre class="draft">${escapeHtml(p.draft)}</pre>
+      <button class="copy">Copy draft</button>`;
+    card.querySelector(".copy").addEventListener("click", (ev) => {
+      navigator.clipboard.writeText(p.draft).then(() => {
+        ev.target.textContent = "Copied";
+        setTimeout(() => (ev.target.textContent = "Copy draft"), 1500);
+      });
+    });
+    out.appendChild(card);
+  });
+}
+
+async function fetchBatch(batch) {
+  const res = await fetch("/api/scout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input: current.input,
+      yourName: current.yourName,
+      yourRole: current.yourRole,
+      batch,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function run(firstBatch) {
+  setStatus('<span class="spinner"></span>Searching public sources... this can take 20-30 seconds.');
+  $("go").disabled = true;
+  $("more").style.display = "none";
+  try {
+    const data = await fetchBatch(firstBatch);
+    if (firstBatch === 1) {
+      $("results").innerHTML = "";
+      $("notes").innerHTML = (data.notes || []).map((n) => `<div>&#9432; ${escapeHtml(n)}</div>`).join("");
+    }
+    if (!data.people.length && firstBatch === 1) {
+      setStatus(`No people found for ${escapeHtml(data.company.name)}. Try the full company name or a bigger company.`);
+      return;
+    }
+    renderPeople(data.people, (data.batch - 1) * data.batchSize, data.company);
+    current.batch = data.batch;
+    setStatus(
+      `${escapeHtml(data.company.name)} - showing ${Math.min(data.batch * data.batchSize, data.total)} of ${data.total} people.` +
+      (data.hasMore ? "" : " That's everyone found.")
+    );
+    $("more").style.display = data.hasMore ? "block" : "none";
+  } catch (e) {
+    setStatus(escapeHtml(e.message), true);
+  } finally {
+    $("go").disabled = false;
+  }
+}
+
+$("go").addEventListener("click", () => {
+  const input = $("input").value.trim();
+  if (!input) return setStatus("Paste a company LinkedIn URL or name first.", true);
+  current = { input, yourName: $("yourName").value.trim(), yourRole: $("yourRole").value.trim(), batch: 1 };
+  run(1);
+});
+
+$("more").addEventListener("click", () => run(current.batch + 1));
+
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("go").click(); });
+
+// Allow a shareable link like /?company=https://www.linkedin.com/company/acme
+// to prefill and run the search straight away.
+const params = new URLSearchParams(location.search);
+if (params.get("company")) {
+  $("input").value = params.get("company");
+  $("go").click();
+}
+</script>
+</body>
+</html>
