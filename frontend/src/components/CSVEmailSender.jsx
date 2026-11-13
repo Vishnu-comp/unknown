@@ -10,8 +10,9 @@ const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api' 
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const GAP_MS = 2000;
-// Referral Scout runs locally: node referral-scout/server.mjs (branch referral-scout)
-const REFERRAL_SCOUT_URL = import.meta.env.VITE_REFERRAL_SCOUT_URL || 'http://localhost:3737';
+// Referral Scout is served by the main backend at /referral-scout (proxied by
+// Vite like /api), so no separate server is needed. Override to open elsewhere.
+const REFERRAL_SCOUT_URL = import.meta.env.VITE_REFERRAL_SCOUT_URL || '/referral-scout';
 
 const EMPTY_MANUAL_CANDIDATE = {
   name: '',
