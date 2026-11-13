@@ -10,6 +10,8 @@ const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api' 
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const GAP_MS = 2000;
+// Referral Scout runs locally: node referral-scout/server.mjs (branch referral-scout)
+const REFERRAL_SCOUT_URL = import.meta.env.VITE_REFERRAL_SCOUT_URL || 'http://localhost:3737';
 
 const EMPTY_MANUAL_CANDIDATE = {
   name: '',
@@ -648,6 +650,14 @@ const CSVEmailSender = () => {
           <a href="#previews">
             <span className="nav-number">04</span>
             <span><b>Review</b><small>Preview before sending</small></span>
+          </a>
+        </nav>
+
+        <span className="nav-label" style={{ marginTop: 18 }}>Tools</span>
+        <nav className="side-nav" aria-label="Tools">
+          <a className="tool-link" href={REFERRAL_SCOUT_URL} target="_blank" rel="noopener noreferrer">
+            <span className="nav-number">↗</span>
+            <span><b>Referral Scout</b><small>Find people to ask</small></span>
           </a>
         </nav>
 
